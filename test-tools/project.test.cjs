@@ -1,0 +1,13 @@
+const xcode = require('xcode');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const project = xcode.project(path.resolve(__dirname,'../Steady.xcodeproj/project.pbxproj'));
+project.parseSync();
+const objects = project.hash.project.objects;
+const targets = Object.values(objects.PBXNativeTarget).filter(x=>x && typeof x==='object');
+assert.equal(targets.length,1);
+assert.equal(targets[0].name,'Steady');
+assert.equal(Object.values(objects.PBXSourcesBuildPhase).filter(x=>x && typeof x==='object')[0].files.length,5);
+fs.writeFileSync(path.resolve(__dirname,'../Validation/project-parser-results.json'),JSON.stringify({status:'PASS',parser:'xcode npm 3.0.1',target:'Steady',appSwiftSources:5,scope:'OpenStep project parse and target structure only; not Xcode build'},null,2)+'\n');
+console.log('PASS: Xcode project parsed, native target and five app sources verified.');

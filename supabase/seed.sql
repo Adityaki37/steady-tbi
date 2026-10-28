@@ -1,0 +1,2 @@
+-- Intentionally empty. Create distinct test accounts through Auth and use only
+-- fictional in-app examples. No real people, credentials or patient data seeded.

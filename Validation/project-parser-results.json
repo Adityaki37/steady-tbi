@@ -1,0 +1,7 @@
+{
+  "status": "PASS",
+  "parser": "xcode npm 3.0.1",
+  "target": "Steady",
+  "appSwiftSources": 5,
+  "scope": "OpenStep project parse and target structure only; not Xcode build"
+}

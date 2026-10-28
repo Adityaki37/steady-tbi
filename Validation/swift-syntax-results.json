@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "parser": "tree-sitter 0.26.0 / tree-sitter-swift 0.7.4",
+  "files": [
+    "Package.swift",
+    "Steady\\AccountView.swift",
+    "Steady\\AppStore.swift",
+    "Steady\\CloudClient.swift",
+    "Steady\\ContentView.swift",
+    "Steady\\Domain.swift",
+    "Steady\\SteadyApp.swift",
+    "Tests\\DemoRepositoryTests.swift"
+  ],
+  "failures": [],
+  "scope": "Grammar parsing only; no Swift name resolution, type checking, linking or XCTest execution."
+}
