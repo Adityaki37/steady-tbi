@@ -9,7 +9,8 @@
     "Steady\\ContentView.swift",
     "Steady\\Domain.swift",
     "Steady\\SteadyApp.swift",
-    "Tests\\DemoRepositoryTests.swift"
+    "Tests\\DemoRepositoryTests.swift",
+    "AppTests\\CloudClientTests.swift"
   ],
   "failures": [],
   "scope": "Grammar parsing only; no Swift name resolution, type checking, linking or XCTest execution."

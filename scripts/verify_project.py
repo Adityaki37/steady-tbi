@@ -18,7 +18,7 @@ definitions=re.findall(r'^([A-F0-9]{24}) = \{',pbx,re.M)
 require(len(definitions)==len(set(definitions)), 'Unique Xcode object identifiers')
 references=set(re.findall(r'\b[A-F0-9]{24}\b',pbx))
 require(references==set(definitions), 'All Xcode object references resolve')
-require(pbx.count('isa = PBXNativeTarget;')==1, 'One iOS app target')
+require(pbx.count('productType = "com.apple.product-type.application"')==1 and pbx.count('isa = PBXNativeTarget;')==2, 'One iOS app target and one app-hosted regression test target')
 require('XCLocalSwiftPackageReference' in pbx and 'productName = SteadyCore' in pbx, 'Local Swift package linked')
 for file in ['SteadyApp.swift','AppStore.swift','ContentView.swift','CloudClient.swift','AccountView.swift']:
     require((ROOT/'Steady'/file).is_file() and f'path = {file};' in pbx, f'Swift source exists and is referenced: {file}')

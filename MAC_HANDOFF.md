@@ -12,7 +12,7 @@
 
 1. Inspect `sw_vers`, `uname -m`, `df -h`, `xcode-select -p`, `xcodebuild -version` and `xcrun simctl list devices available`. Do not assume the Mac is compatible. Check Apple’s current Xcode support table if installation/update is needed.
 2. The user authorized installing official Xcode if absent on a compatible Mac. Use Apple’s source, surface Apple login, disk, compatibility or license blockers, and let the user handle passwords, 2FA and any required agreement acceptance. Do not buy membership or install Xcode on the Windows PC.
-3. Run `sh scripts/mac-check.sh`. Swift source is prepared but **no compiler has type-checked it yet**. Fix any build/test issues before presenting it as runnable. Run `swift test` for the actual `Domain.swift` implementation.
+3. Run `sh scripts/mac-check.sh`. Swift source is prepared but **no compiler has type-checked it yet**. Fix any build/test issues before presenting it as runnable. Run `swift test` for the actual `Domain.swift` implementation, then **⌘U** in Xcode on an installed simulator for `SteadyAppTests` (offline refresh regression).
 4. Run the simulator, perform `MANUAL_TESTS.md`, inspect accessibility/large text/dark mode, and save actual simulator screenshots in `Validation/`. No iOS screenshots were created on Windows.
 5. Help Aditya select his Personal Team and run the app on his connected iPhone. No TestFlight, App Store release, APNs entitlement or paid signing is part of this handoff.
 6. Separate-account mode is source-complete prototype work that still requires a new backend, real service checks, separate test accounts and two-device verification. Follow `backend/README.md`; do not apply the migration to an existing database or provision a paid service without the exact authorization.

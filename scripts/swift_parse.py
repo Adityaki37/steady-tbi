@@ -10,7 +10,7 @@ from tree_sitter import Language, Parser
 import tree_sitter_swift
 parser=Parser(Language(tree_sitter_swift.language()))
 failures=[]; files=[]
-for file in [ROOT/'Package.swift', *sorted((ROOT/'Steady').glob('*.swift')), *sorted((ROOT/'Tests').glob('*.swift'))]:
+for file in [ROOT/'Package.swift', *sorted((ROOT/'Steady').glob('*.swift')), *sorted((ROOT/'Tests').glob('*.swift')), *sorted((ROOT/'AppTests').glob('*.swift'))]:
     text=file.read_bytes(); tree=parser.parse(text); files.append(str(file.relative_to(ROOT)))
     def walk(node):
         if node.type=='ERROR' or node.is_missing:

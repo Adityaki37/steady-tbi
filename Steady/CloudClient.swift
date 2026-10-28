@@ -83,16 +83,18 @@ private enum SessionKeychain {
     @Published private(set) var grants: [RoleGrant] = []
     @Published var circleID: UUID?
     @Published var message: String?
-    let config = BackendConfig.load()
+    let config: BackendConfig?
     private let network: URLSession
     private var refreshTask: Task<CloudSession, Error>?
     private var generation = UUID()
     private var sessionEpoch = UUID()
     private var temporaryFiles: [URL] = []
-    init() {
+    init(config: BackendConfig? = BackendConfig.load(), network: URLSession? = nil, initialSession: CloudSession? = nil) {
+        self.config = config
         let configuration = URLSessionConfiguration.ephemeral; configuration.urlCache = nil; configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        network = URLSession(configuration: configuration)
-        if let config {
+        self.network = network ?? URLSession(configuration: configuration)
+        if let initialSession { session = initialSession }
+        else if let config {
             do { session = try SessionKeychain.load(config.url.absoluteString) }
             catch { message = error.localizedDescription }
         }
@@ -156,11 +158,17 @@ private enum SessionKeychain {
     }
     func loadCircles() async throws {
         let expected = sessionEpoch
-        let data = try await request("rest/v1/circles?select=id,name,owner_id&order=created_at")
-        guard sessionEpoch == expected, session != nil else { throw CancellationError() }
-        circles = try JSONDecoder().decode([CloudCircle].self, from: data)
-        if circleID == nil || !circles.contains(where: { $0.id == circleID }) { circleID = circles.first?.id }
-        try await refresh()
+        do {
+            let data = try await request("rest/v1/circles?select=id,name,owner_id&order=created_at")
+            guard sessionEpoch == expected, session != nil else { throw CancellationError() }
+            circles = try JSONDecoder().decode([CloudCircle].self, from: data)
+            if circleID == nil || !circles.contains(where: { $0.id == circleID }) { circleID = circles.first?.id }
+            try await refresh()
+        } catch {
+            if sessionEpoch == expected { clearVisibleData(); circles = [] }
+            // A network error clears content but retains the account for retry.
+            throw error
+        }
     }
     func refresh() async throws {
         guard let id = circleID else { clearVisibleData(); return }

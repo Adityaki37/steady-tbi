@@ -6,8 +6,11 @@ const project = xcode.project(path.resolve(__dirname,'../Steady.xcodeproj/projec
 project.parseSync();
 const objects = project.hash.project.objects;
 const targets = Object.values(objects.PBXNativeTarget).filter(x=>x && typeof x==='object');
-assert.equal(targets.length,1);
-assert.equal(targets[0].name,'Steady');
-assert.equal(Object.values(objects.PBXSourcesBuildPhase).filter(x=>x && typeof x==='object')[0].files.length,5);
-fs.writeFileSync(path.resolve(__dirname,'../Validation/project-parser-results.json'),JSON.stringify({status:'PASS',parser:'xcode npm 3.0.1',target:'Steady',appSwiftSources:5,scope:'OpenStep project parse and target structure only; not Xcode build'},null,2)+'\n');
-console.log('PASS: Xcode project parsed, native target and five app sources verified.');
+assert.equal(targets.length,2);
+const app = targets.find(target=>target.name==='Steady');
+assert.ok(app);
+assert.ok(targets.find(target=>target.name==='SteadyAppTests'));
+const sourcePhase=app.buildPhases.map(id=>objects.PBXSourcesBuildPhase[id]).find(Boolean);
+assert.equal(sourcePhase.files.length,5);
+fs.writeFileSync(path.resolve(__dirname,'../Validation/project-parser-results.json'),JSON.stringify({status:'PASS',parser:'xcode npm 3.0.1',target:'Steady',appSwiftSources:5,appHostedTestTarget:'SteadyAppTests',scope:'OpenStep project parse and target structure only; not Xcode build'},null,2)+'\n');
+console.log('PASS: Xcode project parsed, native app and regression test targets verified.');

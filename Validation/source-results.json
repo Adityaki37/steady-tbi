@@ -4,7 +4,7 @@
   "details": [
     "Unique Xcode object identifiers",
     "All Xcode object references resolve",
-    "One iOS app target",
+    "One iOS app target and one app-hosted regression test target",
     "Local Swift package linked",
     "Swift source exists and is referenced: SteadyApp.swift",
     "Swift source exists and is referenced: AppStore.swift",
@@ -33,6 +33,6 @@
     "CLI-created migration matches schema source exactly",
     "Seven core Swift tests supplied (not executed here)"
   ],
-  "schemaSHA256": "eca3a49b38faf635745d20c7958876cfcf698e81a0d1584de5fcac263ca9d94c",
+  "schemaSHA256": "d0267be7fc8f4912f1dc5d124c4d0e35da2d84104e1e955494f0c84d3a3143f3",
   "scope": "Structural source/project/asset checks only. Not Swift compilation, XCTest execution, or device validation."
 }

@@ -72,9 +72,13 @@ resref=obj('resref','isa = PBXFileReference; lastKnownFileType = folder; path = 
 assetbuild=obj('assetbuild',f'isa = PBXBuildFile; fileRef = {assetref};')
 resbuild=obj('resbuild',f'isa = PBXBuildFile; fileRef = {resref};')
 product=obj('product','isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Steady.app; sourceTree = BUILT_PRODUCTS_DIR;')
+testproduct=obj('testproduct','isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SteadyAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
+testref=obj('testref','isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudClientTests.swift; sourceTree = "<group>";')
+testbuild=obj('testbuild',f'isa = PBXBuildFile; fileRef = {testref};')
+testgroup=obj('testgroup',f'isa = PBXGroup; children = ({testref},); path = AppTests; sourceTree = "<group>";')
 appgroup=obj('appgroup',f'isa = PBXGroup; children = ({",".join(refs+[assetref,resref])},); path = Steady; sourceTree = "<group>";')
-productgroup=obj('productgroup',f'isa = PBXGroup; children = ({product},); name = Products; sourceTree = "<group>";')
-rootgroup=obj('rootgroup',f'isa = PBXGroup; children = ({appgroup},{productgroup},); sourceTree = "<group>";')
+productgroup=obj('productgroup',f'isa = PBXGroup; children = ({product},{testproduct},); name = Products; sourceTree = "<group>";')
+rootgroup=obj('rootgroup',f'isa = PBXGroup; children = ({appgroup},{testgroup},{productgroup},); sourceTree = "<group>";')
 package=obj('package','isa = XCLocalSwiftPackageReference; relativePath = .;')
 packageproduct=obj('packageproduct',f'isa = XCSwiftPackageProductDependency; package = {package}; productName = SteadyCore;')
 linkbuild=obj('linkbuild',f'isa = PBXBuildFile; productRef = {packageproduct};')
@@ -101,7 +105,16 @@ targetrelease=config('targetrelease',targetcommon)
 projectconfigs=obj('projectconfigs',f'isa = XCConfigurationList; buildConfigurations = ({projectdebug},{projectrelease},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
 targetconfigs=obj('targetconfigs',f'isa = XCConfigurationList; buildConfigurations = ({targetdebug},{targetrelease},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
 target=obj('target',f'isa = PBXNativeTarget; buildConfigurationList = {targetconfigs}; buildPhases = ({sourcephase},{frameworkphase},{resphase},); buildRules = (); dependencies = (); name = Steady; packageProductDependencies = ({packageproduct},); productName = Steady; productReference = {product}; productType = "com.apple.product-type.application";')
-project=obj('project',f'isa = PBXProject; attributes = {{ BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = {{ {target} = {{ CreatedOnToolsVersion = 16.0; }}; }}; }}; buildConfigurationList = {projectconfigs}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,); mainGroup = {rootgroup}; packageReferences = ({package},); productRefGroup = {productgroup}; projectDirPath = ""; projectRoot = ""; targets = ({target},);')
+testsourcephase=obj('testsourcephase',f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({testbuild},); runOnlyForDeploymentPostprocessing = 0;')
+testframeworkphase=obj('testframeworkphase','isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
+testcommon='CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.aditya.steadydemo.tests; PRODUCT_NAME = "$(TARGET_NAME)"; TARGETED_DEVICE_FAMILY = "1,2"; BUNDLE_LOADER = "$(TEST_HOST)"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Steady.app/Steady";'
+testdebug=config('testdebug',testcommon)
+testrelease=config('testrelease',testcommon)
+testconfigs=obj('testconfigs',f'isa = XCConfigurationList; buildConfigurations = ({testdebug},{testrelease},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
+proxy=obj('testproxy',f'isa = PBXContainerItemProxy; containerPortal = {ident("project")}; proxyType = 1; remoteGlobalIDString = {target}; remoteInfo = Steady;')
+dependency=obj('testdependency',f'isa = PBXTargetDependency; target = {target}; targetProxy = {proxy};')
+testtarget=obj('testtarget',f'isa = PBXNativeTarget; buildConfigurationList = {testconfigs}; buildPhases = ({testsourcephase},{testframeworkphase},); buildRules = (); dependencies = ({dependency},); name = SteadyAppTests; productName = SteadyAppTests; productReference = {testproduct}; productType = "com.apple.product-type.bundle.unit-test";')
+project=obj('project',f'isa = PBXProject; attributes = {{ BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = {{ {target} = {{ CreatedOnToolsVersion = 16.0; }}; {testtarget} = {{ CreatedOnToolsVersion = 16.0; TestTargetID = {target}; }}; }}; }}; buildConfigurationList = {projectconfigs}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,); mainGroup = {rootgroup}; packageReferences = ({package},); productRefGroup = {productgroup}; projectDirPath = ""; projectRoot = ""; targets = ({target},{testtarget},);')
 PROJECT.mkdir(exist_ok=True)
 sections='\n'.join(f'/* Begin {section} section */\n'+ '\n'.join(entries)+f'\n/* End {section} section */' for section,entries in sorted(objects.items()))
 (PROJECT/'project.pbxproj').write_text('// !$*UTF8*$!\n{\narchiveVersion = 1;\nclasses = {};\nobjectVersion = 56;\nobjects = {\n'+sections+f'\n}};\nrootObject = {project};\n}}\n')
@@ -109,7 +122,7 @@ scheme=PROJECT/'xcshareddata'/'xcschemes'; scheme.mkdir(parents=True,exist_ok=Tr
 (scheme/'Steady.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="1600" version="1.3">
  <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Steady.app" BlueprintName="Steady" ReferencedContainer="container:Steady.xcodeproj"/></BuildActionEntry></BuildActionEntries></BuildAction>
- <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables/></TestAction>
+ <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{testtarget}" BuildableName="SteadyAppTests.xctest" BlueprintName="SteadyAppTests" ReferencedContainer="container:Steady.xcodeproj"/></TestableReference></Testables></TestAction>
  <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Steady.app" BlueprintName="Steady" ReferencedContainer="container:Steady.xcodeproj"/></BuildableProductRunnable></LaunchAction>
  <ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES" savedToolIdentifier="" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Steady.app" BlueprintName="Steady" ReferencedContainer="container:Steady.xcodeproj"/></BuildableProductRunnable></ProfileAction>
  <AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/>

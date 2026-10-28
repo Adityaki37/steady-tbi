@@ -54,8 +54,10 @@ try {
   console.log('PASS: migration applies in PostgreSQL (PGlite)');
   const circle = (await as('survivor', "select public.create_circle('Fictional Alex') as id")).rows[0].id;
   const other = (await as('outsider', "select public.create_circle('Other fictional circle') as id")).rows[0].id;
+  let spareCaregiverToken;
   for (const role of ['caregiver','clinician']) {
     const token = (await as('survivor', 'select public.invite_member($1,$2,$3) as token', [circle, `${role}@example.test`, role])).rows[0].token;
+    if(role==='caregiver') spareCaregiverToken=(await as('survivor','select public.invite_member($1,$2,$3) as token',[circle,'caregiver@example.test','caregiver'])).rows[0].token;
     await denied('outsider', 'select public.accept_invite($1)', [token]);
     check((await as(role, 'select public.accept_invite($1) as id', [token])).rows[0].id, circle, 'matching confirmed recipient accepts');
     await denied(role, 'select public.accept_invite($1)', [token]);
@@ -109,6 +111,10 @@ try {
   await denied('caregiver',"insert into public.records(circle_id,kind,author_id,title) values($1,'observations',$2,'Other circle')",[other,users.caregiver]);
   await rejects('survivor',"update public.records set circle_id=$1 where id=$2",[other,symptomID]);
   await rejects('survivor',"update public.records set author_id=$1 where id=$2",[users.caregiver,symptomID]);
+  const attachmentID=id(++sequence), immutablePath=`${circle}/${attachmentID}.png`;
+  await as('survivor',"insert into public.records(id,circle_id,kind,author_id,title,file_path,file_name) values($1,$2,'attachments',$3,'Fictional file',$4,'fictional.png')",[attachmentID,circle,users.survivor,immutablePath]);
+  await denied('survivor','update public.records set file_path=$1 where id=$2',[`${circle}/${id(++sequence)}.pdf`,attachmentID]);
+  await denied('survivor','update public.records set file_name=$1 where id=$2',['changed.pdf',attachmentID]);
   await rejects('survivor',"insert into public.records(circle_id,kind,author_id,title,severity) values($1,'symptoms',$2,'Invalid rating',6)",[circle,users.survivor]);
   // Storage policies mirror attachment grants and cannot be bypassed by object names.
   const storagePath=`${circle}/${id(++sequence)}.png`;
@@ -118,15 +124,31 @@ try {
   await denied('outsider','insert into storage.objects(bucket_id,name,owner_id) values($1,$2,$3)',['steady-fictional',storagePath,users.outsider]);
   await denied('caregiver','insert into storage.objects(bucket_id,name,owner_id) values($1,$2,$3)',['steady-fictional','../other.png',users.caregiver]);
   await denied('caregiver','insert into storage.objects(bucket_id,name,owner_id) values($1,$2,$3)',['steady-fictional',storagePath,users.survivor]);
+  // Positive preconditions for object read/delete and the absence of UPDATE.
+  await as('survivor',"update public.circle_permissions set can_read=true,can_delete=false where circle_id=$1 and role='caregiver' and kind='attachments'",[circle]);
+  check((await as('caregiver','select * from storage.objects where name=$1',[storagePath])).rows.length,1,'object visible before delete restriction check');
+  check((await as('caregiver','delete from storage.objects where name=$1 returning id',[storagePath])).rows.length,0,'file delete denied without delete grant');
+  check((await as('caregiver',"update storage.objects set name=$1 where name=$2 returning id",[`${circle}/${id(++sequence)}.png`,storagePath])).rows.length,0,'storage UPDATE denied even when object is readable');
+  await as('survivor',"update public.circle_permissions set can_delete=true where circle_id=$1 and role='caregiver' and kind='attachments'",[circle]);
+  const deletePath=`${circle}/${id(++sequence)}.png`;
+  await as('caregiver','insert into storage.objects(bucket_id,name,owner_id) values($1,$2,$3)',['steady-fictional',deletePath,users.caregiver]);
+  check((await as('caregiver','delete from storage.objects where name=$1 returning id',[deletePath])).rows.length,1,'file deletion works with read+delete');
   await as('caregiver',"insert into public.check_ins(circle_id,sender_id) values($1,$2)",[circle,users.caregiver]);
   await denied('clinician',"insert into public.check_ins(circle_id,sender_id) values($1,$2)",[circle,users.clinician]);
   await denied('caregiver',"insert into public.check_ins(circle_id,sender_id) values($1,$2)",[other,users.caregiver]);
   check((await as('survivor','select * from public.check_ins where circle_id=$1',[circle])).rows.length,1,'survivor receives shared check-in');
   check((await as('clinician','select * from public.check_ins where circle_id=$1',[circle])).rows.length,0,'clinician cannot read check-ins');
+  check((await as('caregiver','select * from storage.objects where name=$1',[storagePath])).rows.length,1,'file visible immediately before membership removal');
+  check((await db.query('select revoked_at from public.circle_invitations where token_hash=encode(sha256(convert_to($1,\'UTF8\')),\'hex\')',[spareCaregiverToken])).rows[0].revoked_at,null,'spare invitation is live before removal');
+  await db.query("update auth.users set email='caregiver-changed@example.test' where id=$1",[users.caregiver]);
   await as('survivor','delete from public.circle_members where circle_id=$1 and user_id=$2',[circle,users.caregiver]);
+  await denied('caregiver','select public.accept_invite($1)',[spareCaregiverToken]);
+  check((await db.query('select revoked_at is not null as revoked from public.circle_invitations where token_hash=encode(sha256(convert_to($1,\'UTF8\')),\'hex\')',[spareCaregiverToken])).rows[0].revoked,true,'membership removal atomically revokes spare invitations');
   await denied('caregiver',"insert into public.records(circle_id,kind,author_id,title) values($1,'observations',$2,'Revoked')",[circle,users.caregiver]);
   await denied('caregiver',"insert into public.check_ins(circle_id,sender_id) values($1,$2)",[circle,users.caregiver]);
   check((await as('caregiver','select * from storage.objects where name=$1',[storagePath])).rows.length,0,'membership revocation removes file access');
+  const fresh=(await as('survivor','select public.invite_member($1,$2,$3) as token',[circle,'caregiver-changed@example.test','caregiver'])).rows[0].token;
+  check((await as('caregiver','select public.accept_invite($1) as id',[fresh])).rows[0].id,circle,'only a new survivor-issued invitation can restore access');
   const exposed=(await db.query("select tablename,rowsecurity from pg_tables where schemaname='public' order by tablename")).rows;
   check(exposed.every(table=>table.rowsecurity),true,'RLS enabled on every public table');
   const report={engine:'PGlite 0.5.13 (PostgreSQL WASM)',assertions,permissionCombinations:combinations,status:'PASS',schemaSHA256:createHash('sha256').update(schema).digest('hex'),limitations:['Supabase Auth and Storage service tables are test doubles','No Xcode compile, Swift test execution, hosted service or iPhone run performed']};

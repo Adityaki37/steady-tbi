@@ -46,7 +46,7 @@ node test-tools/project.test.cjs
 
 Backend tests execute PostgreSQL RLS and functions using pinned PGlite, with minimal Auth/Storage test tables. They cover all **128 permission combinations** (2 roles × 4 types × 16 CRUD combinations), invitation replay/email/expiry/revocation, cross-circle isolation, author spoofing, storage gates, check-ins and member revocation. This is stronger than a JavaScript policy mock, but **does not exercise Supabase’s HTTP, Auth or Storage services**. Reports are in [Validation](Validation/).
 
-An additional optional Swift grammar parse was run on Windows with pinned tree-sitter packages. It found no syntax errors in the eight Swift files. This is **not type checking or compilation**. To repeat: `python3 -m pip install --target .validation-python -r validation-requirements.txt`, then `python3 scripts/swift_parse.py`. Regenerating project assets with `scripts/generate_project.py` additionally needs Pillow; normal building does not.
+An additional optional Swift grammar parse was run on Windows with pinned tree-sitter packages. It found no syntax errors in the nine Swift files. This is **not type checking or compilation**. To repeat: `python3 -m pip install --target .validation-python -r validation-requirements.txt`, then `python3 scripts/swift_parse.py`. Regenerating project assets with `scripts/generate_project.py` additionally needs Pillow; normal building does not.
 
 On the Mac, before calling the app verified:
 
@@ -54,7 +54,7 @@ On the Mac, before calling the app verified:
 sh scripts/mac-check.sh
 ```
 
-That runs the seven supplied Swift package XCTest methods (including the complete permission matrix, disk persistence/reset, corruption and failed-write recovery), then an unsigned simulator build. These Swift tests and the build have **not run on Windows**. The Xcode scheme has no app-hosted XCTest target; core tests are run with `swift test`. Follow [MANUAL_TESTS.md](MANUAL_TESTS.md) for native UI and two-device checks.
+That runs the seven supplied Swift package XCTest methods (including the complete permission matrix, disk persistence/reset, corruption and failed-write recovery), then an unsigned simulator build. These Swift tests and the build have **not run on Windows**. An additional **SteadyAppTests** target in the Xcode scheme contains an offline/manual-refresh regression test using URLProtocol; run **Product → Test (⌘U)** with an installed simulator selected. That app-hosted test has also **not run here**. Follow [MANUAL_TESTS.md](MANUAL_TESTS.md) for native UI and two-device checks.
 
 ## Handoff to Codex on your Mac
 

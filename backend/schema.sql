@@ -49,6 +49,7 @@ create table public.circle_invitations (
   id uuid primary key default gen_random_uuid(),
   circle_id uuid not null references public.circles(id) on delete cascade,
   recipient_email text not null check (char_length(recipient_email) <= 254),
+  recipient_user_id uuid references auth.users(id) on delete cascade,
   role text not null check (role in ('caregiver','clinician')),
   token_hash text not null unique,
   expires_at timestamptz not null default now() + interval '7 days',
@@ -107,15 +108,15 @@ begin
   from unnest(array['caregiver','clinician']) r cross join unnest(array['symptoms','observations','notes','attachments']) k;
   return c;
 end $$;
-create function private.invite(c uuid, email text, r text) returns text
+create function private.invite(c uuid, recipient text, r text) returns text
 language plpgsql security definer set search_path = '' as $$
 declare token text;
 begin
   if not private.is_owner(c) then raise exception 'Only survivor can invite' using errcode = '42501'; end if;
-  if r not in ('caregiver','clinician') or email is null or email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' then raise exception 'Invalid invitation'; end if;
+  if r not in ('caregiver','clinician') or recipient is null or recipient !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' then raise exception 'Invalid invitation'; end if;
   token := gen_random_uuid()::text || gen_random_uuid()::text;
-  insert into public.circle_invitations(circle_id,recipient_email,role,token_hash)
-  values(c, lower(btrim(email)), r, encode(sha256(convert_to(token,'UTF8')),'hex'));
+  insert into public.circle_invitations(circle_id,recipient_email,recipient_user_id,role,token_hash)
+  values(c, lower(btrim(recipient)), (select u.id from auth.users u where lower(u.email)=lower(btrim(recipient)) limit 1), r, encode(sha256(convert_to(token,'UTF8')),'hex'));
   return token; -- returned once to owner; owner shares explicitly, no automatic email
 end $$;
 create function private.accept_invite(token text) returns uuid
@@ -126,14 +127,31 @@ begin
   select lower(u.email) into email from auth.users u where u.id=auth.uid() and u.email_confirmed_at is not null;
   select * into invitation from public.circle_invitations
     where token_hash=encode(sha256(convert_to(token,'UTF8')),'hex') and accepted_at is null and revoked_at is null and expires_at>now() for update;
-  if not found or email is null or invitation.recipient_email<>email or private.is_owner(invitation.circle_id) then
+  if not found or email is null or invitation.recipient_email<>email or (invitation.recipient_user_id is not null and invitation.recipient_user_id<>auth.uid()) or private.is_owner(invitation.circle_id) then
     raise exception 'Invalid, expired or mismatched invitation' using errcode = '42501';
   end if;
   -- Conflict is deliberately an error: an invitation never silently changes an existing role.
   insert into public.circle_members(circle_id,user_id,role) values(invitation.circle_id,auth.uid(),invitation.role);
+  -- Bind other pending invitations to this verified account, including invitations
+  -- created before sign-up. Later email changes cannot evade member revocation.
+  update public.circle_invitations set recipient_user_id=auth.uid()
+    where circle_id=invitation.circle_id and recipient_email=email and recipient_user_id is null;
   update public.circle_invitations set accepted_at=now() where id=invitation.id;
   return invitation.circle_id;
 end $$;
+create function private.revoke_removed_member_invites() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  -- Called only by the DELETE trigger after the member-delete RLS check. Null
+  -- auth.uid is reserved for administrative/cascade deletion, never API clients.
+  if auth.uid() is not null and not private.is_owner(old.circle_id) then raise exception 'Denied' using errcode='42501'; end if;
+  update public.circle_invitations set revoked_at=now()
+    where circle_id=old.circle_id and accepted_at is null and revoked_at is null
+      and (recipient_user_id=old.user_id or recipient_email=(select lower(u.email) from auth.users u where u.id=old.user_id));
+  return old;
+end $$;
+create trigger revoke_removed_member_invites after delete on public.circle_members
+for each row execute function private.revoke_removed_member_invites();
 create function private.revoke_invite(i uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
