@@ -387,6 +387,15 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Caregiver-triggered cross-device push. Invoked by the database trigger
+# private.notify_symptom_break() for symptom-break check-ins. APNs credentials are
+# supplied via `supabase secrets set` (see functions/notify-symptom-break/README.md);
+# no secrets are stored here.
+[functions.notify-symptom-break]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-symptom-break/index.ts"
+
 [analytics]
 enabled = true
 port = 54327

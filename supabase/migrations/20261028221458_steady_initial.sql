@@ -63,10 +63,23 @@ create table public.check_ins (
   circle_id uuid not null references public.circles(id) on delete cascade,
   sender_id uuid not null references auth.users(id),
   body text not null default 'A demo caregiver suggested a gentle check-in.' check (char_length(body) between 1 and 500),
+  category text not null default 'general' check (category in ('general','symptom_break')),
   created_at timestamptz not null default now()
 );
 create index check_ins_circle_date_idx on public.check_ins(circle_id, created_at desc);
 create index check_ins_sender_idx on public.check_ins(sender_id);
+-- Per-device APNs registration. A user owns only their own tokens; caregivers
+-- never see survivor tokens through RLS (the symptom-break send runs server-side
+-- in a definer function / Edge Function service context, below).
+create table public.device_tokens (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  token text not null check (char_length(token) between 1 and 400),
+  platform text not null default 'ios' check (platform in ('ios')),
+  environment text not null default 'sandbox' check (environment in ('sandbox','production')),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, token)
+);
+create index device_tokens_user_idx on public.device_tokens(user_id);
 
 -- Narrow guarded lookups avoid recursive RLS. Authorization is database data,
 -- never user_metadata or a client-selected role. All definer functions are private.
@@ -180,18 +193,59 @@ begin
 end $$;
 create trigger protect_record before update on public.records for each row execute function private.protect_record();
 
+-- A caregiver-recorded symptom-break check-in notifies the circle OWNER on their
+-- other devices. Reading survivor tokens is authorized only here (definer), never
+-- via RLS. In the hosted project this invokes the notify-symptom-break Edge
+-- Function over the Supabase webhook helper (supabase_functions.http_request or
+-- pg_net). Plain Postgres/PGlite has no such extension, so the net call is wrapped
+-- in a guarded block that no-ops when the helper is absent: the migration still
+-- applies and symptom-break check-ins still INSERT cleanly with no edge endpoint.
+create function private.notify_symptom_break() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare owner uuid; payload jsonb;
+begin
+  if new.category is distinct from 'symptom_break' then return new; end if;
+  select owner_id into owner from public.circles where id = new.circle_id;
+  if owner is null then return new; end if;
+  -- Server-side token lookup (never exposed to the caregiver through RLS).
+  payload := jsonb_build_object(
+    'check_in_id', new.id,
+    'circle_id', new.circle_id,
+    'owner_id', owner,
+    'tokens', coalesce((select jsonb_agg(jsonb_build_object('token', t.token, 'environment', t.environment))
+                        from public.device_tokens t where t.user_id = owner and t.platform = 'ios'), '[]'::jsonb));
+  -- Degrade gracefully: only attempt the outbound webhook when the Supabase helper
+  -- exists. Any failure here must NOT abort the check-in insert.
+  begin
+    if to_regprocedure('supabase_functions.http_request(text,text,jsonb,jsonb,integer)') is not null then
+      perform supabase_functions.http_request(
+        'notify-symptom-break', 'POST',
+        jsonb_build_object('Content-Type','application/json'),
+        payload, 5000);
+    end if;
+  exception when others then
+    -- Notification is best-effort; swallow so the check-in always commits.
+    null;
+  end;
+  return new;
+end $$;
+create trigger notify_symptom_break after insert on public.check_ins
+for each row execute function private.notify_symptom_break();
+
 alter table public.circles enable row level security;
 alter table public.circle_members enable row level security;
 alter table public.circle_permissions enable row level security;
 alter table public.records enable row level security;
 alter table public.circle_invitations enable row level security;
 alter table public.check_ins enable row level security;
-revoke all on public.circles, public.circle_members, public.circle_permissions, public.records, public.circle_invitations, public.check_ins from anon, authenticated;
+alter table public.device_tokens enable row level security;
+revoke all on public.circles, public.circle_members, public.circle_permissions, public.records, public.circle_invitations, public.check_ins, public.device_tokens from anon, authenticated;
 grant select on public.circles, public.circle_members, public.circle_permissions, public.circle_invitations to authenticated;
 grant delete on public.circle_members to authenticated;
 grant update(can_read,can_add,can_edit,can_delete) on public.circle_permissions to authenticated;
 grant select,insert,update,delete on public.records to authenticated;
 grant select,insert,delete on public.check_ins to authenticated;
+grant select,insert,update,delete on public.device_tokens to authenticated;
 
 create policy circles_read on public.circles for select to authenticated using(private.is_member(id));
 create policy members_read on public.circle_members for select to authenticated using(private.is_owner(circle_id) or user_id=(select auth.uid()));
@@ -206,6 +260,8 @@ create policy records_delete on public.records for delete to authenticated using
 create policy check_ins_read on public.check_ins for select to authenticated using(private.is_owner(circle_id) or (sender_id=(select auth.uid()) and private.assigned_role(circle_id)='caregiver'));
 create policy check_ins_add on public.check_ins for insert to authenticated with check(private.assigned_role(circle_id)='caregiver' and sender_id=(select auth.uid()));
 create policy check_ins_delete on public.check_ins for delete to authenticated using(private.is_owner(circle_id));
+-- A user may read/write ONLY their own device tokens. No cross-user access.
+create policy device_tokens_own on public.device_tokens for all to authenticated using(user_id=(select auth.uid())) with check(user_id=(select auth.uid()));
 
 -- Private bucket. No signed/public URLs are used: authenticated downloads recheck access.
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)

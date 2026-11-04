@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "checks": 30,
+  "checks": 31,
   "details": [
     "Unique Xcode object identifiers",
     "All Xcode object references resolve",
@@ -20,19 +20,20 @@
     "Only public client config keys in template",
     "No configured hosted backend in deliverable",
     "Fictional MRI PNG has expected format and dimensions",
-    "Six backend tables declared",
+    "Seven backend tables declared",
     "RLS enabled: circles",
     "RLS enabled: circle_members",
     "RLS enabled: circle_permissions",
     "RLS enabled: records",
     "RLS enabled: circle_invitations",
     "RLS enabled: check_ins",
+    "RLS enabled: device_tokens",
     "UPDATE has a WITH CHECK authorization clause",
     "No user-editable metadata authorization",
     "Private storage bucket has a 15 MB limit",
     "CLI-created migration matches schema source exactly",
     "Seven core Swift tests supplied (not executed here)"
   ],
-  "schemaSHA256": "d0267be7fc8f4912f1dc5d124c4d0e35da2d84104e1e955494f0c84d3a3143f3",
+  "schemaSHA256": "25e5e3aa1d37869c55812eebcb2f26559b7b32c227ff1f75b7d6e64e0a2ec589",
   "scope": "Structural source/project/asset checks only. Not Swift compilation, XCTest execution, or device validation."
 }
