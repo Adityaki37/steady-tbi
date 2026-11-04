@@ -131,12 +131,15 @@ struct AccountView: View {
             Picker("Type", selection: $kind) { ForEach(RecordKind.allCases) { Text($0.title).tag($0) } }
             if client.can(kind, .add) {
                 Button(kind == .attachments ? "Import a fictional file" : "Add fictional entry") { if kind == .attachments { importing = true } else { editor = true } }.disabled(busy)
-                if kind == .attachments, client.role == "survivor" {
+                if kind == .attachments {
                     Button("Upload bundled fictional MRI illustration") {
                         guard let url = Bundle.main.url(forResource: "Fictional-brain-MRI", withExtension: "png", subdirectory: "Resources") else { return }
                         Task { await perform { try await client.upload(url) } }
                     }.disabled(busy)
+                    Text("Clearly labeled fictional illustration, not a real patient scan. Steady does not diagnose or interpret imaging. The survivor controls who may add files; any member the survivor authorizes (including a clinician) can upload one here.").font(.caption).foregroundStyle(.secondary)
                 }
+            } else if kind == .attachments, client.role == "clinician" {
+                Text("To upload a fictional MRI, ask the survivor to grant Files → Add for the clinician role. The survivor controls access; uploads stay disabled until they turn it on.").font(.caption).foregroundStyle(.secondary)
             }
             if !client.can(kind, .read) {
                 Label("History is private", systemImage: "lock.shield")

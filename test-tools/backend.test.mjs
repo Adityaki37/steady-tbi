@@ -156,6 +156,37 @@ try {
   await denied('caregiver',"insert into public.device_tokens(user_id,token) values($1,'spoofed-token-cccc')",[users.survivor]);
   check((await as('survivor','update public.device_tokens set environment=$1 where token=$2 returning environment',['production','survivor-token-aaaa'])).rows[0].environment,'production','user can update their own device token');
   check((await as('survivor','delete from public.device_tokens where token=$1 returning token',['survivor-token-aaaa'])).rows.length,1,'user can delete their own device token');
+  // Clinician MRI upload: only works after the survivor grants attachments.add; the
+  // survivor and other attachments.read-authorized members can then view it. We set the
+  // exact grants we need right here so this does not depend on or disturb the 128-combo loop.
+  const clinicianUploadPath=`${circle}/${id(++sequence)}.png`, clinicianRecordID=id(++sequence), clinicianRecordPath=`${circle}/${clinicianRecordID}.png`;
+  // (1) With the default clinician attachments grant (read=true, add=false) the clinician
+  // cannot upload the storage object nor insert the attachments record.
+  await as('survivor',"update public.circle_permissions set can_read=true,can_add=false,can_edit=false,can_delete=false where circle_id=$1 and role='clinician' and kind='attachments'",[circle]);
+  check((await as('clinician','select private.allowed($1,$2,$3) as allowed',[circle,'attachments','add'])).rows[0].allowed,false,'clinician attachments.add is false by default');
+  await denied('clinician','insert into storage.objects(bucket_id,name,owner_id) values($1,$2,$3)',['steady-fictional',clinicianUploadPath,users.clinician]);
+  await denied('clinician',"insert into public.records(id,circle_id,kind,author_id,title,file_path,file_name) values($1,$2,'attachments',$3,'Fictional MRI',$4,'fictional-mri.png')",[clinicianRecordID,circle,users.clinician,clinicianRecordPath]);
+  // (2) After the survivor turns on clinician attachments add (and keeps read), the clinician
+  // can upload the storage object (owner_id = clinician) and insert the attachments record.
+  await as('survivor',"update public.circle_permissions set can_read=true,can_add=true where circle_id=$1 and role='clinician' and kind='attachments'",[circle]);
+  check((await as('clinician','select private.allowed($1,$2,$3) as allowed',[circle,'attachments','add'])).rows[0].allowed,true,'survivor-granted clinician attachments.add is true');
+  await as('clinician','insert into storage.objects(bucket_id,name,owner_id) values($1,$2,$3)',['steady-fictional',clinicianUploadPath,users.clinician]); assertions++;
+  await as('clinician',"insert into public.records(id,circle_id,kind,author_id,title,file_path,file_name) values($1,$2,'attachments',$3,'Fictional MRI illustration',$4,'fictional-mri.png')",[clinicianRecordID,circle,users.clinician,clinicianRecordPath]); assertions++;
+  // (3) The survivor (owner) and an attachments.read-authorized caregiver can view the
+  // clinician-uploaded record and object; a member WITHOUT attachments.read cannot.
+  check((await as('survivor','select * from public.records where id=$1',[clinicianRecordID])).rows.length,1,'survivor reads the clinician-uploaded attachment record');
+  check((await as('survivor','select * from storage.objects where name=$1',[clinicianUploadPath])).rows.length,1,'survivor reads the clinician-uploaded storage object');
+  await as('survivor',"update public.circle_permissions set can_read=true where circle_id=$1 and role='caregiver' and kind='attachments'",[circle]);
+  check((await as('caregiver','select * from public.records where id=$1',[clinicianRecordID])).rows.length,1,'attachments.read caregiver reads the clinician-uploaded record');
+  check((await as('caregiver','select * from storage.objects where name=$1',[clinicianUploadPath])).rows.length,1,'attachments.read caregiver reads the clinician-uploaded object');
+  await as('survivor',"update public.circle_permissions set can_read=false,can_edit=false,can_delete=false where circle_id=$1 and role='caregiver' and kind='attachments'",[circle]);
+  check((await as('caregiver','select * from public.records where id=$1',[clinicianRecordID])).rows.length,0,'member without attachments.read cannot read the clinician-uploaded record');
+  check((await as('caregiver','select * from storage.objects where name=$1',[clinicianUploadPath])).rows.length,0,'member without attachments.read cannot read the clinician-uploaded object');
+  // (4) The clinician still cannot change grants: only the survivor (owner) may update
+  // circle_permissions, so a clinician UPDATE is RLS-filtered to zero rows.
+  check((await as('clinician',"update public.circle_permissions set can_add=true where circle_id=$1 and role='caregiver' and kind='attachments' returning role",[circle])).rows.length,0,'clinician cannot change circle grants');
+  // Restore caregiver attachments read so the membership-removal checks below still hold.
+  await as('survivor',"update public.circle_permissions set can_read=true where circle_id=$1 and role='caregiver' and kind='attachments'",[circle]);
   check((await as('caregiver','select * from storage.objects where name=$1',[storagePath])).rows.length,1,'file visible immediately before membership removal');
   check((await db.query('select revoked_at from public.circle_invitations where token_hash=encode(sha256(convert_to($1,\'UTF8\')),\'hex\')',[spareCaregiverToken])).rows[0].revoked_at,null,'spare invitation is live before removal');
   await db.query("update auth.users set email='caregiver-changed@example.test' where id=$1",[users.caregiver]);
@@ -171,7 +202,7 @@ try {
   check(exposed.every(table=>table.rowsecurity),true,'RLS enabled on every public table');
   const report={engine:'PGlite 0.5.13 (PostgreSQL WASM)',assertions,permissionCombinations:combinations,status:'PASS',schemaSHA256:createHash('sha256').update(schema).digest('hex'),limitations:['Supabase Auth and Storage service tables are test doubles','No Xcode compile, Swift test execution, hosted service or iPhone run performed']};
   await writeFile(new URL('../Validation/backend-results.json',import.meta.url),JSON.stringify(report,null,2)+'\n');
-  console.log(`PASS: ${assertions} assertions; ${combinations} permission combinations, invitations, cross-circle isolation, storage gates, check-ins, symptom-break notification, device tokens and revocation`);
+  console.log(`PASS: ${assertions} assertions; ${combinations} permission combinations, invitations, cross-circle isolation, storage gates, check-ins, symptom-break notification, device tokens, clinician upload with survivor-granted attachments add, and revocation`);
 } catch (error) {
   console.error('FAIL:', error.message, error.code ?? '', error.query ?? '');
   process.exitCode=1;
