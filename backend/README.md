@@ -1,6 +1,6 @@
 # Separate-device backend — not provisioned
 
-This folder contains code for a new Supabase project. **No existing database has been changed and no hosted project, paid service or APNs configuration has been created.** Local demo mode needs none of this.
+This folder contains code for a new Supabase project. **No existing database has been changed and no hosted project or paid service has been created.** The caregiver symptom-break push plumbing (device-token table, trigger and Edge Function) is present in the schema and in `supabase/functions/`, but **no APNs credentials are in the repo and nothing has been run against a live backend or live APNs here.** Local demo mode needs none of this.
 
 ## Architecture
 
@@ -11,7 +11,9 @@ This folder contains code for a new Supabase project. **No existing database has
 - Storage bucket `steady-fictional` is private, with PNG/JPEG/PDF MIME types and a 15 MB cap. Object policies check the current attachment grant for the circle. Downloads are authenticated requests, not public links or long-lived signed URLs. Object replacement is deliberately disabled.
 - Clinician fictional-MRI upload is enforced entirely by the same attachment grant, not by a role check. By default a clinician has Files **read** on but Files **add** off, so storage-object and attachment-record inserts are both denied. The survivor must first toggle clinician → Files → **Add** on (survivor controls access). Once granted, the clinician can upload a clearly **fictional** MRI illustration (not a real patient scan, no diagnostic interpretation), and the survivor plus any member with Files **read** can view it; a member without Files read cannot. The clinician still cannot change grants. This path is proven by `test-tools/backend.test.mjs` (with-grant and without-grant cases) and needs no schema change.
 - Guarded security-definer routines are in the unexposed `private` schema with fixed empty search paths, explicit caller checks and revoked PUBLIC/anon execution. Public RPC wrappers are security-invoker. Private authorization lookups avoid recursive RLS.
-- Caregiver check-ins are explicit server rows, read by the survivor. Foreground polling (15 seconds) is **not remote push** and will not wake a closed app. No device tokens, APNs keys or Push Notifications entitlement exist.
+- Caregiver check-ins are explicit server rows, read by the survivor. The `check_ins` table has a `category` column (`general` or `symptom_break`, default `general`); existing caregiver-insert / survivor-read RLS is unchanged. Foreground polling (15 seconds) reads these rows and is the fallback; it is **not remote push** and will not wake a closed app by itself.
+- **Device tokens:** `public.device_tokens(user_id, token, platform, environment, updated_at)` stores each account's APNs device token. RLS is **own-rows-only** (`device_tokens_own`, `user_id = auth.uid()` in both `using` and `with check`): a user may read/write only their own tokens and can never see another user's. The iOS app uploads its token here after sign-in.
+- **Symptom-break notification path:** when a caregiver inserts a `symptom_break` check-in, an `AFTER INSERT` trigger `private.notify_symptom_break()` (security-definer, empty search path) looks up the **circle owner's** device tokens server-side (never via caregiver-visible RLS) and invokes the Edge Function. The net call is guarded so the migration still applies cleanly under plain Postgres/PGlite (where the webhook helper is absent, the send is skipped and the insert commits). The actual APNs send lives in the `supabase/functions/notify-symptom-break` Edge Function. **PGlite tests exercise the schema, RLS and trigger-degrades-gracefully behavior; they do not exercise live APNs or the live webhook.**
 
 ## Choose and configure a NEW project
 
@@ -21,6 +23,24 @@ This folder contains code for a new Supabase project. **No existing database has
 4. In the iOS project, copy `Steady/Resources/Backend.example.plist` to **`Steady/Resources/Backend.local.plist`**. Enter only the new project’s HTTPS URL and **publishable** key (`sb_publishable_...`). This file is gitignored. Never put a service-role key, database password, refresh token or APNs key in the app/repository. The `.env.example` file is a reference only; the iOS app reads the bundled plist.
 5. Rebuild in Xcode. Switch on **Separate accounts**, create/sign into distinct confirmed test accounts, and follow `MANUAL_TESTS.md`. Make a fictional survivor circle, invite the caregiver/clinician account emails, then enter the token on the appropriate other device. The same account may own one circle and be an invited member of another; each selected circle determines its role.
 6. Use only fictional records. Import the supplied fictional MRI illustration with the sample upload button. To let a **clinician** upload the fictional MRI, the survivor first opens **Survivor access control** and turns on clinician → Files → **Add**; only then does the clinician’s **Import a fictional file** / **Upload bundled fictional MRI illustration** button act, and the survivor plus any member granted Files read can view it. The illustration is clearly fictional, not a patient scan, and Steady offers no diagnostic interpretation. Nothing from local demo mode is uploaded automatically.
+
+## Enable the symptom-break remote push (paid Apple account required)
+
+The device-token table, the `symptom_break` trigger and the `supabase/functions/notify-symptom-break` Edge Function are all in the repo. **Live cross-device APNs delivery is gated and has not been run here.** It requires a **paid Apple Developer Program membership**, a real **APNs `.p8` auth key**, and the Push Notifications capability enabled on a real provisioning profile. A free Personal Team can build/run the app and demonstrate the same-device local-notification fallback, but cannot receive remote pushes. To turn it on in a hosted project:
+
+1. Create an **APNs Auth Key** in the Apple Developer portal and download the `.p8`. Record the **Key ID**, your **Team ID** and the app **Bundle ID**.
+2. Set the Edge Function secrets with the CLI (**no real values live in this repo or in git**):
+   ```sh
+   supabase secrets set APNS_KEY_ID=... APNS_TEAM_ID=... APNS_BUNDLE_ID=...
+   supabase secrets set APNS_PRIVATE_KEY="$(cat AuthKey_XXXXXX.p8)"
+   ```
+   `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected into the function environment by the platform; the function reads the service-role key only inside its own runtime and it is never exposed to clients. The `.p8` is never committed.
+3. Deploy the function and wire the trigger's webhook in the hosted project:
+   ```sh
+   supabase functions deploy notify-symptom-break
+   ```
+   The `[functions.notify-symptom-break]` entry already exists in `supabase/config.toml` (no secrets there). In a hosted project the trigger invokes the function through the `supabase_functions` webhook / `pg_net`; confirm those extensions are available.
+4. Verify delivery on two real devices. There is **no cross-device remote delivery on a free Apple account** and none of this has been validated here.
 
 ## Run backend rules on Windows, without a service
 
@@ -51,7 +71,7 @@ The local config disables anonymous sign-in, requires email confirmation and con
 - Foreground polling clears shared history on failure, on backgrounding and on sign-out. A previously seen/exported file cannot be remotely erased. A removed member loses future server access immediately; on-screen content clears on the next refresh/background/sign-out.
 - Invitation/check-in abuse rate limits, audit trail, password recovery UI, MFA, clinician verification, real patient consent, production threat modeling and clinical validation are not implemented.
 - File upload and record creation are separate. Failed record creation can leave an orphan, which the app reports. An owner/admin must reconcile Storage; there is no automatic cleanup worker. File deletion and entry deletion can also partially fail. Do not grant broad read/delete access to add-only contributors to mask these cases.
-- Live realtime subscriptions, background notifications and APNs are future work. Do not label local notifications or foreground polling as cross-device push.
+- The caregiver symptom-break remote-push path (device tokens, trigger, Edge Function, iOS registration, entitlement) is implemented but **not live**: live APNs delivery is gated on a paid Apple account + APNs `.p8` key + configured Edge Function secrets, and has not been run against a device, a live backend or live APNs here. Live realtime subscriptions are still future work. Do not label local notifications or foreground polling as cross-device push.
 
 ## Documentation consulted
 

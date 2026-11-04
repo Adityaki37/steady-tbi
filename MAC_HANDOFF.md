@@ -14,7 +14,15 @@
 2. The user authorized installing official Xcode if absent on a compatible Mac. Use Apple’s source, surface Apple login, disk, compatibility or license blockers, and let the user handle passwords, 2FA and any required agreement acceptance. Do not buy membership or install Xcode on the Windows PC.
 3. Run `sh scripts/mac-check.sh`. Swift source is prepared but **no compiler has type-checked it yet**. Fix any build/test issues before presenting it as runnable. Run `swift test` for the actual `Domain.swift` implementation, then **⌘U** in Xcode on an installed simulator for `SteadyAppTests` (offline refresh regression).
 4. Run the simulator, perform `MANUAL_TESTS.md`, inspect accessibility/large text/dark mode, and save actual simulator screenshots in `Validation/`. No iOS screenshots were created on Windows.
-5. Help Aditya select his Personal Team and run the app on his connected iPhone. No TestFlight, App Store release, APNs entitlement or paid signing is part of this handoff.
+5. Help Aditya select his Personal Team and run the app on his connected iPhone. The **Push Notifications entitlement** (`aps-environment = development`) and the **`remote-notification` background mode** are now in the project. A **free Personal Team can build and run the app on device**, and the **local-notification fallback** already demonstrates the symptom-break UX on that single device; it **cannot enable the push capability with a real provisioning profile and cannot receive remote pushes**, and Personal Team provisioning expires in about **7 days**. **Live cross-device remote APNs delivery is not part of what a free account can do**: it requires a **paid Apple Developer Program membership ($99/yr)**, a real **APNs `.p8` auth key**, and the **Push Notifications capability** enabled with a real profile. None of the remote-push path has been run on device, simulator, a live backend or live APNs here. To enable live delivery when the paid account exists:
+   - In Xcode, on **Steady target → Signing & Capabilities**, add the **Push Notifications** capability (the `Steady/Steady.entitlements` file already declares `aps-environment`; for production builds switch it to `production`). Confirm the `remote-notification` background mode is present.
+   - In the Apple Developer portal, create an **APNs Auth Key** and download the **`.p8`** file. Note the **Key ID**, your **Team ID**, and the app's **Bundle ID**. Never commit the `.p8` or any of these values.
+   - Set them as **Supabase Edge Function secrets** (never in the repo or in git):
+     ```sh
+     supabase secrets set APNS_KEY_ID=... APNS_TEAM_ID=... APNS_BUNDLE_ID=...
+     supabase secrets set APNS_PRIVATE_KEY="$(cat AuthKey_XXXXXX.p8)"
+     ```
+   - Deploy the function: `supabase functions deploy notify-symptom-break`, and wire the `check_ins` symptom-break trigger to invoke it in the hosted project (see [backend/README.md](backend/README.md)). Then verify delivery on two real devices.
 6. Separate-account mode is source-complete prototype work that still requires a new backend, real service checks, separate test accounts and two-device verification. Follow `backend/README.md`; do not apply the migration to an existing database or provision a paid service without the exact authorization.
 
 ## Known prototype limits
@@ -23,7 +31,7 @@
 - Shared feed currently shows up to 200 records; check-ins up to 25. There is no pagination, recovery-password UI, audit-event history, rate limiting for invitations/check-ins, production authentication hardening or clinician workflow integration.
 - A completed file upload followed by failed record creation may leave an orphan object. The app reports the path; a survivor/admin must clean it up in Storage. Do not silently grant extra delete/read permissions to add-only roles to solve this.
 - Shared file deletion and record deletion are two operations. A service failure between them can leave an entry whose file is missing. This needs reconciliation before production use.
-- Foreground polling is not background push. Previously displayed content can remain visible until the next successful refresh; downloaded/exported information cannot be revoked. No real patient data should be used.
+- The remote APNs push path is implemented (device tokens, trigger, Edge Function, iOS registration, entitlement) but **not yet live**: foreground polling and the same-device local notification are what work on a free account today. Remote cross-device delivery stays dark until the paid membership, APNs `.p8` key and Edge Function secrets are configured. Previously displayed content can remain visible until the next successful refresh; downloaded/exported information cannot be revoked. No real patient data should be used.
 - Local mode is intentionally single-device; its role switcher is not authentication.
 - Sensor prediction, HealthKit, DICOM, diagnosis, actual patient enrollment, clinical validation and production compliance are outside this prototype.
 
