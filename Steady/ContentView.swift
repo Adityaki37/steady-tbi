@@ -82,6 +82,12 @@ struct HomeView: View {
                             sending = true
                             Task { await store.requestCheckIn(withNotification: notify); sending = false }
                         }.buttonStyle(.bordered).disabled(sending)
+                        Divider()
+                        Text("Noticed a possible symptom? Send a supportive prompt to consider taking a break. This is not a diagnosis and does not predict overload.").font(.subheadline)
+                        Button(sending ? "Saving…" : "Suggest taking a break") {
+                            sending = true
+                            Task { await store.requestCheckIn(withNotification: notify, symptomBreak: true); sending = false }
+                        }.buttonStyle(.bordered).disabled(sending)
                     }
                 }
                 Card {

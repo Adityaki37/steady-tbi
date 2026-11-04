@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct AccountView: View {
     @StateObject private var client = CloudClient()
+    @ObservedObject private var push = PushRegistrar.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var email = ""
     @State private var password = ""
@@ -35,7 +36,7 @@ struct AccountView: View {
                 }
                 Section("Fictional-data prototype") {
                     Text("Use fictional records only. Account mode syncs with the configured backend. Local demo data is separate and is never uploaded automatically.")
-                    Text("Check-ins sync in the app while open (every 15 seconds or on refresh). No APNs or background remote push is configured.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Check-ins sync in the app while open (every 15 seconds or on refresh), which remains the fallback. A caregiver can also send an \u{201C}I noticed a possible symptom\u{201D} prompt. Live cross-device Apple push requires a paid Apple Developer account and configured APNs; the entitlement is set for development only.").font(.footnote).foregroundStyle(.secondary)
                     Text("After a network error, shared history is cleared until a successful refresh. Previously viewed or exported information cannot be taken back by revocation.").font(.footnote).foregroundStyle(.secondary)
                 }
             }.navigationTitle("Separate accounts").navigationBarTitleDisplayMode(.inline)
@@ -56,7 +57,8 @@ struct AccountView: View {
                 }
                 .alert("Account update", isPresented: Binding(get: { client.message != nil }, set: { if !$0 { client.message = nil } })) { Button("OK") { client.message = nil } } message: { Text(client.message ?? "") }
                 .task {
-                    if client.session != nil { await perform { try await client.loadCircles() } }
+                    push.requestAuthorizationAndRegister()
+                    if client.session != nil { await perform { try await client.loadCircles() }; await registerPushTokenIfPossible() }
                     while !Task.isCancelled {
                         do { try await Task.sleep(for: .seconds(15)) } catch { return }
                         if scenePhase == .active, client.session != nil, !busy {
@@ -70,7 +72,8 @@ struct AccountView: View {
                 }
                 .onChange(of: client.can(.attachments, .read)) { _, allowed in if !allowed { preview = nil } }
                 .onChange(of: client.circleID) { _, _ in editing = nil; editor = false; preview = nil }
-                .onChange(of: client.session?.user.id) { _, _ in editing = nil; editor = false; preview = nil; invitationToken = "" }
+                .onChange(of: client.session?.user.id) { _, newValue in editing = nil; editor = false; preview = nil; invitationToken = ""; if newValue != nil { Task { await registerPushTokenIfPossible() } } }
+                .onChange(of: push.deviceToken) { _, _ in Task { await registerPushTokenIfPossible() } }
                 .onDisappear { preview = nil; client.clearVisibleData() }
         }
     }
@@ -208,6 +211,8 @@ struct AccountView: View {
         Section("Check-ins") {
             if client.role == "caregiver" {
                 Button("Suggest a survivor check-in") { Task { await perform { try await client.checkIn() } } }.disabled(busy)
+                Button("I noticed a possible symptom - suggest a break") { Task { await perform { try await client.requestSymptomBreak() } } }.disabled(busy)
+                Text("This is a supportive prompt from you, not a diagnosis and not a prediction of overload. Live cross-device push needs a paid Apple Developer account and configured APNs; until then the survivor sees it on the next foreground refresh, and in local demo mode via a same-device notification.").font(.footnote).foregroundStyle(.secondary)
             }
             ForEach(client.checkIns) { checkIn in
                 Text(checkIn.body)
@@ -218,6 +223,12 @@ struct AccountView: View {
     private func perform(_ operation: () async throws -> Void) async {
         guard !busy else { return }; busy = true; defer { busy = false }
         do { try await operation() } catch is CancellationError { } catch { client.message = error.localizedDescription }
+    }
+    // Upload the captured APNs token once the user is signed in. Silent on failure
+    // (for example without a paid Apple account); the foreground refresh is the fallback.
+    private func registerPushTokenIfPossible() async {
+        guard client.session != nil, let token = push.deviceToken else { return }
+        do { try await client.registerDeviceToken(token) } catch { }
     }
 }
 

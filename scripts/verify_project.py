@@ -25,7 +25,13 @@ for file in ['SteadyApp.swift','AppStore.swift','ContentView.swift','CloudClient
 scheme=ET.parse(ROOT/'Steady.xcodeproj/xcshareddata/xcschemes/Steady.xcscheme')
 require(scheme.getroot().tag=='Scheme', 'Shared Xcode scheme is well-formed XML')
 require('IPHONEOS_DEPLOYMENT_TARGET = 17.0' in pbx, 'iOS deployment target is 17.0')
-require('aps-environment' not in pbx and not list(ROOT.rglob('*.entitlements')), 'No APNs entitlement or paid push dependency')
+entitlements_path=ROOT/'Steady/Steady.entitlements'
+require(entitlements_path.is_file(), 'Push entitlements file exists')
+entitlements=plistlib.loads(entitlements_path.read_bytes())
+require(entitlements.get('aps-environment')=='development', 'APNs entitlement declares development aps-environment (free/dev, not a provisioned paid capability)')
+require('CODE_SIGN_ENTITLEMENTS = Steady/Steady.entitlements;' in pbx, 'App configs wire CODE_SIGN_ENTITLEMENTS to Steady/Steady.entitlements')
+require(pbx.count('CODE_SIGN_ENTITLEMENTS = Steady/Steady.entitlements;')==2, 'Both app configs (Debug and Release) set CODE_SIGN_ENTITLEMENTS')
+require('INFOPLIST_KEY_UIBackgroundModes = "remote-notification";' in pbx and pbx.count('INFOPLIST_KEY_UIBackgroundModes = "remote-notification";')==2, 'Both app configs declare the remote-notification background mode')
 for file in (ROOT/'Steady/Assets.xcassets').rglob('Contents.json'):
     obj=json.loads(file.read_text()); require(obj.get('info',{}).get('version')==1, f'Valid asset manifest: {file.parent.name}')
 config=plistlib.loads((ROOT/'Steady/Resources/Backend.example.plist').read_bytes())

@@ -91,24 +91,26 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
     }
     func checkIn() -> String? { try? repo().checkIn(role) }
     func dismissCheckIn() throws { try repo().dismissCheckIn(role); revision += 1 }
-    func requestCheckIn(withNotification: Bool) async {
+    func requestCheckIn(withNotification: Bool, symptomBreak: Bool = false) async {
         do {
-            try repo().requestCheckIn(role); revision += 1
+            try repo().requestCheckIn(role, symptomBreak: symptomBreak); revision += 1
             if withNotification {
                 let center = UNUserNotificationCenter.current()
                 let allowed = try await center.requestAuthorization(options: [.alert, .sound])
                 guard allowed else {
-                    show("Check-in saved", "Notifications are off. Switch to Survivor to see the check-in here. You can allow notifications in iPhone Settings."); return
+                    show(symptomBreak ? "Prompt saved" : "Check-in saved", "Notifications are off. Switch to Survivor to see the message here. You can allow notifications in iPhone Settings."); return
                 }
                 let content = UNMutableNotificationContent()
-                content.title = "Steady demo check-in"
-                content.body = "A same-device demo check-in is ready. Open Steady when convenient."
+                content.title = symptomBreak ? "Steady demo: consider a break" : "Steady demo check-in"
+                content.body = symptomBreak
+                    ? "A caregiver noticed a possible symptom and suggests taking a break. Open Steady when convenient."
+                    : "A same-device demo check-in is ready. Open Steady when convenient."
                 content.sound = .default
                 let request = UNNotificationRequest(identifier: "steady-demo-check-in", content: content,
                     trigger: UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false))
                 try await center.add(request)
             }
-            show("Check-in saved", withNotification ? "A local notification is scheduled in five seconds on this iPhone. Switch to Survivor to see the message. This is not cross-device push." : "Switch to Survivor to see the check-in. This is a single-device demo.")
+            show(symptomBreak ? "Prompt saved" : "Check-in saved", withNotification ? "A local notification is scheduled in five seconds on this iPhone. Switch to Survivor to see the message. This is not cross-device push." : "Switch to Survivor to see the message. This is a single-device demo.")
         } catch { show("Check-in status", "The request may have been saved, but the alert could not complete: \(error.localizedDescription)") }
     }
     func reset() throws {

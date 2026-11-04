@@ -122,6 +122,16 @@ final class DemoRepositoryTests: XCTestCase {
         XCTAssertThrowsError(try repository.checkIn(.caregiver))
         XCTAssertThrowsError(try repository.dismissCheckIn(.clinician))
         try repository.requestCheckIn(.caregiver)
-        XCTAssertNotNil(try repository.checkIn(.survivor))
+        let general = try XCTUnwrap(try repository.checkIn(.survivor))
+        XCTAssertFalse(general.lowercased().contains("possible symptom"))
+        // The symptom-break variant stays caregiver-only and carries the calm,
+        // non-diagnostic wording mirrored by the account mode and the local notification.
+        XCTAssertThrowsError(try repository.requestCheckIn(.survivor, symptomBreak: true))
+        XCTAssertThrowsError(try repository.requestCheckIn(.clinician, symptomBreak: true))
+        try repository.requestCheckIn(.caregiver, symptomBreak: true)
+        let breakMessage = try XCTUnwrap(try repository.checkIn(.survivor))
+        XCTAssertTrue(breakMessage.lowercased().contains("possible symptom"))
+        XCTAssertTrue(breakMessage.lowercased().contains("break"))
+        XCTAssertTrue(breakMessage.lowercased().contains("not a diagnosis"))
     }
 }

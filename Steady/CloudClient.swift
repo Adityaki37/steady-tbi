@@ -242,6 +242,36 @@ private enum SessionKeychain {
         try await refresh(); message = "Check-in saved on the server. The survivor sees it when their app refreshes. No remote iOS push is sent."
     }
     func dismissCheckIn(_ id: UUID) async throws { _ = try await request("rest/v1/check_ins?id=eq.\(id.uuidString)", method: "DELETE"); try await refresh() }
+    // Upsert the APNs device token for this signed-in user. The device_tokens table
+    // (FEAT-002) is own-rows-only under RLS, so a user can only register their own
+    // token. merge-duplicates keeps repeated launches from erroring on the primary key.
+    func registerDeviceToken(_ hexToken: String) async throws {
+        guard let session else { throw DemoError.invalid("Sign in before registering for notifications.") }
+        let trimmed = hexToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let config, let url = URL(string: "rest/v1/device_tokens?on_conflict=user_id,token", relativeTo: config.url.appendingPathComponent("/")) else { throw DemoError.invalid("Configure a new backend first.") }
+        var request = URLRequest(url: url); request.httpMethod = "POST"; request.timeoutInterval = 30
+        request.setValue(config.key, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // "sandbox" matches the development aps-environment entitlement used here.
+        request.setValue("resolution=merge-duplicates,return=minimal", forHTTPHeaderField: "Prefer")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["user_id": session.user.id.uuidString, "token": trimmed, "platform": "ios", "environment": "sandbox"])
+        let (data, response) = try await network.data(for: request)
+        guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
+            let details = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            throw DemoError.invalid((details?["message"] as? String) ?? "Could not register this device for notifications.")
+        }
+    }
+    // A caregiver records the calm "possible symptom / suggest a break" prompt as a
+    // symptom_break check-in. The server-side trigger (FEAT-002) attempts APNs delivery
+    // only when a paid Apple account + APNs are configured; otherwise the survivor sees
+    // it on the next foreground refresh, exactly like an ordinary check-in.
+    func requestSymptomBreak() async throws {
+        guard let id = circleID, let session else { throw DemoError.missing }
+        _ = try await request("rest/v1/check_ins", method: "POST", body: ["circle_id": id.uuidString, "sender_id": session.user.id.uuidString, "category": "symptom_break", "body": "A caregiver noticed a possible symptom and suggests taking a break."])
+        try await refresh(); message = "Saved on the server. Live cross-device push requires a paid Apple Developer account and configured APNs; until then the survivor sees this on the next foreground refresh (the app refreshes every 15 seconds while open). This is a supportive prompt, not a diagnosis."
+    }
     func upload(_ source: URL) async throws {
         guard let id = circleID, let session, can(.attachments, .add) else { throw DemoError.denied }
         let accessing = source.startAccessingSecurityScopedResource(); defer { if accessing { source.stopAccessingSecurityScopedResource() } }

@@ -211,9 +211,13 @@ private struct DemoState: Codable {
         guard let index = state.records.firstIndex(where: { $0.id == id && $0.kind == kind }) else { throw DemoError.missing }
         var next = state; let deleted = next.records.remove(at: index); try commit(next); return deleted.attachment
     }
-    public func requestCheckIn(_ role: DemoRole) throws {
+    public func requestCheckIn(_ role: DemoRole, symptomBreak: Bool = false) throws {
         guard role == .caregiver else { throw DemoError.denied }
-        var next = state; next.checkIn = "Your demo caregiver suggested a check-in. You can log how you feel or choose a quiet break."; try commit(next)
+        var next = state
+        next.checkIn = symptomBreak
+            ? "Your demo caregiver noticed a possible symptom and suggests taking a break. This is a supportive prompt, not a diagnosis."
+            : "Your demo caregiver suggested a check-in. You can log how you feel or choose a quiet break."
+        try commit(next)
     }
     public func checkIn(_ role: DemoRole) throws -> String? {
         guard role == .survivor else { throw DemoError.denied }; return state.checkIn

@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "checks": 31,
+  "checks": 35,
   "details": [
     "Unique Xcode object identifiers",
     "All Xcode object references resolve",
@@ -13,7 +13,11 @@
     "Swift source exists and is referenced: AccountView.swift",
     "Shared Xcode scheme is well-formed XML",
     "iOS deployment target is 17.0",
-    "No APNs entitlement or paid push dependency",
+    "Push entitlements file exists",
+    "APNs entitlement declares development aps-environment (free/dev, not a provisioned paid capability)",
+    "App configs wire CODE_SIGN_ENTITLEMENTS to Steady/Steady.entitlements",
+    "Both app configs (Debug and Release) set CODE_SIGN_ENTITLEMENTS",
+    "Both app configs declare the remote-notification background mode",
     "Valid asset manifest: Assets.xcassets",
     "Valid asset manifest: AccentColor.colorset",
     "Valid asset manifest: AppIcon.appiconset",
