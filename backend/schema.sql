@@ -266,7 +266,7 @@ create policy device_tokens_own on public.device_tokens for all to authenticated
 -- Private bucket. No signed/public URLs are used: authenticated downloads recheck access.
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('steady-fictional','steady-fictional',false,15728640,array['image/png','image/jpeg','application/pdf'])
-on conflict (id) do nothing;
+on conflict (id) do update set public=excluded.public, file_size_limit=excluded.file_size_limit, allowed_mime_types=excluded.allowed_mime_types;
 create function private.storage_allowed(path text,a text) returns boolean
 language plpgsql stable security definer set search_path = '' as $$
 declare c uuid;

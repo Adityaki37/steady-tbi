@@ -281,8 +281,8 @@ await check('storage: revoking attachments.add blocks new uploads but keeps read
 });
 await check('storage: delete is permission checked and removes the object', async () => {
   const denied = await api('storage/v1/object/steady-fictional', { method: 'DELETE', token: T('caregiver'), body: { prefixes: [clinicianPath] } });
+  assert.ok(!denied.ok || (Array.isArray(denied.json) && denied.json.length === 0), 'caregiver delete removed nothing');
   const stillThere = await download('survivor', clinicianPath); ok(stillThere, 'object survives caregiver delete');
-  void denied;
   const r = await api('storage/v1/object/steady-fictional', { method: 'DELETE', token: T('survivor'), body: { prefixes: [clinicianPath] } });
   ok(r, 'survivor delete');
   rejected(await download('survivor', clinicianPath), 'gone');

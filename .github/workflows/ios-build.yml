@@ -39,6 +39,8 @@ jobs:
             -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedDataTest \
             CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test 2>&1 | tee test.log | tail -150
       - name: UI tests (XCUITest) on a simulator
+        id: uitest
+        continue-on-error: true
         run: |
           set -o pipefail
           rm -rf UITests.xcresult
@@ -121,3 +123,8 @@ jobs:
           path: |
             build.log
             test.log
+      - name: Fail if UI tests failed
+        if: steps.uitest.outcome == 'failure'
+        run: |
+          echo "UI tests failed; see ui-test-results and uitest.log"
+          exit 1

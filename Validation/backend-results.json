@@ -3,7 +3,7 @@
   "assertions": 1097,
   "permissionCombinations": 128,
   "status": "PASS",
-  "schemaSHA256": "9d9edeef9b747dec4667633edf0be809c342a592a676e59e08f3ccff05dee6e4",
+  "schemaSHA256": "7f08c5f3e30c6f15973cd169c6dbacff339f7daf4825ad33aeba3058722917ff",
   "limitations": [
     "Supabase Auth and Storage service tables are test doubles",
     "No Xcode compile, Swift test execution, hosted service or iPhone run performed"
