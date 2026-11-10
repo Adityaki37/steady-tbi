@@ -30,6 +30,13 @@ jobs:
           xcodebuild -project Steady.xcodeproj -scheme Steady -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData \
             CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | tail -150
+      - name: Show generated Info.plist and signature state
+        if: always()
+        run: |
+          APP=DerivedData/Build/Products/Debug-iphonesimulator/Steady.app
+          ls "$APP" | head -30
+          plutil -p "$APP/Info.plist" || true
+          codesign -dvv "$APP" 2>&1 | head -5 || true
       - name: App-hosted tests on a simulator
         run: |
           set -o pipefail
