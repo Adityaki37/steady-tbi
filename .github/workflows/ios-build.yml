@@ -37,7 +37,7 @@ jobs:
           echo "Using simulator: $DEVICE"
           xcodebuild -project Steady.xcodeproj -scheme Steady \
             -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedData \
-            CODE_SIGNING_ALLOWED=NO test 2>&1 | tee test.log | tail -150
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test 2>&1 | tee test.log | tail -150
       - name: Show generated Info.plist and signature state
         if: always()
         run: |
