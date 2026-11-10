@@ -44,7 +44,7 @@ struct AccountView: View {
                 .sheet(isPresented: $editor) { CloudEditor(client: client, kind: kind, existing: nil) }
                 .sheet(item: $editing) { CloudEditor(client: client, kind: RecordKind(rawValue: $0.kind) ?? .notes, existing: $0) }
                 .sheet(item: $preview) { item in
-                    NavigationStack { QuickLookView(url: item.url).navigationTitle("Fictional file").navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { preview = nil } } } }
+                    FilePreviewView(url: item.url, title: "Fictional file") { preview = nil }
                 }
                 .fileImporter(isPresented: $importing, allowedContentTypes: [.png,.jpeg,.pdf], allowsMultipleSelection: false) { result in
                     Task { await perform { if let file = try result.get().first { try await client.upload(file) } } }

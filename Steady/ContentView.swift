@@ -1,7 +1,7 @@
 import SwiftUI
 import SteadyCore
 import UniformTypeIdentifiers
-import QuickLook
+import PDFKit
 
 private enum Palette {
     static let background = Color(uiColor: .systemGroupedBackground)
@@ -290,7 +290,7 @@ struct FilesView: View {
                 do { if let url = try result.get().first { try store.importFile(url); store.show("File added", "The fictional file was copied into this app on this device.") } }
                 catch { store.report(error) }
             }
-            .sheet(item: $preview) { item in NavigationStack { QuickLookView(url: item.url).navigationTitle("Fictional file preview").navigationBarTitleDisplayMode(.inline).toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { preview = nil } } } } }
+            .sheet(item: $preview) { item in FilePreviewView(url: item.url, title: "Fictional file preview") { preview = nil } }
             .sheet(item: $editing) { EditorView(kind: .attachments, existing: $0) }
             .confirmationDialog("Delete file and its entry?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
                 Button("Delete file", role: .destructive) {
@@ -301,19 +301,64 @@ struct FilesView: View {
     }
 }
 
-struct QuickLookView: UIViewControllerRepresentable {
+struct FilePreviewView: View {
     let url: URL
-    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
-    func makeUIViewController(context: Context) -> QLPreviewController {
-        let controller = QLPreviewController(); controller.dataSource = context.coordinator; return controller
+    let title: String
+    let onDone: () -> Void
+    var body: some View {
+        NavigationStack {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Palette.background)
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done", action: onDone) } }
+        }
     }
-    func updateUIViewController(_ controller: QLPreviewController, context: Context) {}
-    final class Coordinator: NSObject, QLPreviewControllerDataSource {
-        let url: URL
-        init(url: URL) { self.url = url }
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
-        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
+    @ViewBuilder private var content: some View {
+        if url.pathExtension.lowercased() == "pdf" {
+            PDFPreview(url: url).accessibilityIdentifier("filePreviewPDF")
+        } else if let image = UIImage(contentsOfFile: url.path) {
+            VStack(spacing: 12) {
+                ZoomableImage(image: image)
+                Text("Fictional illustration. Not a patient scan and not interpreted by Steady.")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal)
+            }.padding(.bottom)
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle").font(.largeTitle).accessibilityHidden(true)
+                Text("This file could not be previewed.").font(.headline)
+            }.accessibilityElement(children: .combine).accessibilityIdentifier("filePreviewError")
+        }
     }
+}
+
+private struct ZoomableImage: View {
+    let image: UIImage
+    @State private var scale: CGFloat = 1
+    @State private var committed: CGFloat = 1
+    var body: some View {
+        Image(uiImage: image)
+            .resizable().scaledToFit()
+            .scaleEffect(scale)
+            .gesture(MagnifyGesture()
+                .onChanged { scale = min(max(committed * $0.magnification, 1), 5) }
+                .onEnded { _ in committed = scale })
+            .onTapGesture(count: 2) { scale = 1; committed = 1 }
+            .clipped()
+            .accessibilityElement()
+            .accessibilityLabel("Fictional brain MRI illustration. Not a patient scan.")
+            .accessibilityAddTraits(.isImage)
+            .accessibilityIdentifier("filePreviewImage")
+    }
+}
+
+private struct PDFPreview: UIViewRepresentable {
+    let url: URL
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView(); view.autoScales = true; view.document = PDFDocument(url: url); return view
+    }
+    func updateUIView(_ view: PDFView, context: Context) {}
 }
 
 struct SharingView: View {

@@ -121,7 +121,7 @@ final class SteadyUITests: XCTestCase {
         shot("02-journal-with-new-symptom")
     }
 
-    func testFilesTabQuickLookOfFictionalMRI() {
+    func testFilesTabPreviewOfFictionalMRI() {
         launch()
         openTab("Files")
         XCTAssertTrue(app.staticTexts["Fictional attachments only"].waitForExistence(timeout: 10))
@@ -129,10 +129,15 @@ final class SteadyUITests: XCTestCase {
         XCTAssertTrue(preview.waitForExistence(timeout: 10), "Sample MRI row missing")
         shot("03-files-list")
         preview.tap()
-        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForExistence(timeout: 15), "Quick Look sheet did not appear")
-        sleep(2)
+        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForExistence(timeout: 15), "Preview sheet did not appear")
+        let image = app.images["filePreviewImage"]
+        XCTAssertTrue(image.waitForExistence(timeout: 10), "Preview image did not render")
+        XCTAssertFalse(image.frame.isEmpty, "Preview image has an empty frame")
+        XCTAssertGreaterThan(image.frame.width, 0)
+        XCTAssertGreaterThan(image.frame.height, 0)
         shot("04-quicklook-fictional-mri")
         app.navigationBars["Fictional file preview"].buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForNonExistence(timeout: 10), "Preview sheet did not close")
         XCTAssertTrue(app.staticTexts["Fictional attachments only"].waitForExistence(timeout: 10))
     }
 
