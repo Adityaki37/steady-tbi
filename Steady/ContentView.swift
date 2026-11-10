@@ -22,7 +22,7 @@ struct ContentView: View {
                 Toggle("Separate accounts (configured backend)", isOn: $accounts).font(.subheadline)
                 if !accounts { Picker("Demo role", selection: $store.role) {
                     ForEach(DemoRole.allCases) { Text($0.title).tag($0) }
-                }.pickerStyle(.segmented).accessibilityHint("Switches a fictional role on this device. This is not authentication.") }
+                }.pickerStyle(.segmented).accessibilityIdentifier("rolePicker").accessibilityHint("Switches a fictional role on this device. This is not authentication.") }
                 Text(accounts ? "Account roles are assigned by survivor invitations" : "One device · role switcher, not secure sign-in").font(.caption).foregroundStyle(.secondary)
             }.padding().background(Palette.surface)
             if accounts {
@@ -78,7 +78,7 @@ struct HomeView: View {
                     Text(roleDescription)
                     if store.can(store.role.contribution, .add) {
                         Button(store.role == .survivor ? "Log a symptom" : store.role == .caregiver ? "Add an observation" : "Add a clinician note") { editor = true }
-                            .buttonStyle(PrimaryButtonStyle())
+                            .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("primaryAddButton")
                     } else { Label("Adding is off for this role", systemImage: "lock").foregroundStyle(.secondary) }
                 }
                 if store.role == .survivor, let message = store.checkIn() {
@@ -227,13 +227,13 @@ struct EditorView: View {
         NavigationStack {
             Form {
                 Section("Fictional \(kind.title.lowercased()) entry") {
-                    TextField("Short title", text: $title).accessibilityLabel("Entry title")
-                    TextField("What did you notice?", text: $bodyText, axis: .vertical).lineLimit(4...10)
+                    TextField("Short title", text: $title).accessibilityLabel("Entry title").accessibilityIdentifier("entryTitle")
+                    TextField("What did you notice?", text: $bodyText, axis: .vertical).lineLimit(4...10).accessibilityIdentifier("entryBody")
                     Text("\(title.count)/100 title · \(bodyText.count)/3,000 note").font(.caption).foregroundStyle(.secondary)
                 }
                 if kind == .symptoms {
                     Section("Self-reported intensity") {
-                        Stepper("\(severity) of 5", value: $severity, in: 1...5)
+                        Stepper("\(severity) of 5", value: $severity, in: 1...5).accessibilityIdentifier("intensityStepper")
                         Text("1 = mild · 5 = intense. This is a personal description, not a medical score.").font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -246,7 +246,7 @@ struct EditorView: View {
                         Button("Save") {
                             do { try store.save(kind, existing: existing, title: title.trimmingCharacters(in: .whitespacesAndNewlines), body: bodyText, severity: kind == .symptoms ? severity : nil); dismiss() }
                             catch { errorMessage = error.localizedDescription }
-                        }.disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 100 || bodyText.count > 3000)
+                        }.disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 100 || bodyText.count > 3000).accessibilityIdentifier("saveEntry")
                     }
                 }
         }
@@ -265,7 +265,7 @@ struct FilesView: View {
             Section {
                 Text("Fictional attachments only").font(.headline)
                 Text("Preview a sample brain MRI illustration or import a made-up PDF, PNG or JPEG (up to 15 MB). No scan analysis or diagnostic interpretation.").font(.subheadline)
-                if store.can(.attachments, .add) { Button { importing = true } label: { Label("Import a fictional file", systemImage: "plus.circle") } }
+                if store.can(.attachments, .add) { Button { importing = true } label: { Label("Import a fictional file", systemImage: "plus.circle") }.accessibilityIdentifier("importFile") }
             }
             if !store.can(.attachments, .read) {
                 Section { Label("Files are private to this role", systemImage: "lock"); Text("Importing, if enabled, does not grant access to existing files.") }
@@ -276,7 +276,7 @@ struct FilesView: View {
                     ForEach(files) { file in
                         VStack(alignment: .leading, spacing: 10) {
                             RecordRow(record: file)
-                            Button("Preview file") { do { preview = FilePreview(url: try store.preview(file.id)) } catch { store.report(error) } }
+                            Button("Preview file") { do { preview = FilePreview(url: try store.preview(file.id)) } catch { store.report(error) } }.accessibilityIdentifier("previewFile")
                             HStack(spacing: 20) {
                                 if store.can(.attachments, .edit) { Button("Edit details") { editing = file } }
                                 if store.can(.attachments, .delete) { Button("Delete", role: .destructive) { deleting = file } }
@@ -329,17 +329,18 @@ struct SharingView: View {
                 ForEach([DemoRole.caregiver, .clinician]) { target in
                     Section(target.title) {
                         ForEach(RecordKind.allCases) { kind in
-                            DisclosureGroup(kind.title) {
+                            DisclosureGroup {
                                 ForEach(DemoAction.allCases) { action in
                                     Toggle(action.rawValue.capitalized, isOn: binding(target, kind, action))
                                         .accessibilityLabel("\(target.title) \(action.rawValue) \(kind.title)")
+                                        .accessibilityIdentifier("grant-\(target.rawValue)-\(action.rawValue)-\(kind.rawValue)")
                                 }
-                            }
+                            } label: { Text(kind.title).accessibilityIdentifier("disclosure-\(target.rawValue)-\(kind.rawValue)") }
                         }
                     }
                 }
                 Section("Start again") {
-                    Button("Reset fictional demo", role: .destructive) { reset = true }
+                    Button("Reset fictional demo", role: .destructive) { reset = true }.accessibilityIdentifier("resetDemo")
                     Text("Restores example entries and default permissions, removes imported files, and clears the local check-in and notification.").font(.footnote).foregroundStyle(.secondary)
                 }
             } else {

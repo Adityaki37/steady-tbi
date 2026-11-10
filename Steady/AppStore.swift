@@ -19,6 +19,8 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         directory = support.appendingPathComponent("SteadyDemo", isDirectory: true)
+        // UI tests pass -STEADY_UITEST for a fresh, deterministic fictional state on every launch.
+        if ProcessInfo.processInfo.arguments.contains("-STEADY_UITEST") { try? FileManager.default.removeItem(at: directory) }
         persistence = DiskPersistence(url: directory.appendingPathComponent("demo-v1.json"))
         do {
             repository = try DemoRepository(persistence: persistence)

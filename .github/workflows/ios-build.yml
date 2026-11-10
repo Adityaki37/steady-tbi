@@ -38,6 +38,42 @@ jobs:
           xcodebuild -project Steady.xcodeproj -scheme Steady \
             -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedDataTest \
             CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test 2>&1 | tee test.log | tail -150
+      - name: UI tests (XCUITest) on a simulator
+        run: |
+          set -o pipefail
+          rm -rf UITests.xcresult
+          DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9A-Za-z ]+ \(' | sed 's/ ($//')
+          echo "Using simulator: $DEVICE"
+          xcodebuild -project Steady.xcodeproj -scheme Steady \
+            -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedDataUITest \
+            -resultBundlePath UITests.xcresult -only-testing:SteadyUITests \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test 2>&1 | tee uitest.log | tail -150
+      - name: Export and print UI test screenshots
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p uishots
+          echo "=== UI test results ==="
+          grep -E "Test (Case|Suite).*(passed|failed)|Executed [0-9]+ test|TEST (SUCCEEDED|FAILED)" uitest.log || true
+          xcrun xcresulttool export attachments --path UITests.xcresult --output-path uishots || echo "attachment export failed"
+          ls uishots | head -40
+          if [ -f uishots/manifest.json ]; then echo "=== manifest.json ==="; cat uishots/manifest.json | head -c 6000; echo; fi
+          COUNT=0
+          for f in uishots/*.png; do
+            [ -e "$f" ] || continue
+            COUNT=$((COUNT+1)); [ "$COUNT" -gt 15 ] && break
+            sips -Z 900 "$f" --out "$f.small.jpg" -s format jpeg -s formatOptions 70 >/dev/null
+            echo "BEGIN_SHOT $(basename "$f" .png)"; base64 -i "$f.small.jpg" | fold -w 1000; echo "END_SHOT"
+          done
+      - name: Upload UI test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: |
+            uishots/
+            UITests.xcresult
+            uitest.log
       - name: Launch in simulator and capture screenshots
         run: |
           DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9A-Za-z ]+ \(' | sed 's/ ($//')

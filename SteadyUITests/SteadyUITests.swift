@@ -1,0 +1,214 @@
+import XCTest
+
+/// UI tests for the local single-device demo. Every launch passes -STEADY_UITEST so the
+/// app wipes its saved state first and starts from the fictional seed data.
+final class SteadyUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUp() {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments += ["-STEADY_UITEST", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+    }
+
+    // MARK: Helpers
+
+    private func launch(extraArguments: [String] = []) {
+        app.launchArguments += extraArguments
+        app.launch()
+        XCTAssertTrue(app.buttons["primaryAddButton"].waitForExistence(timeout: 20), "Today screen did not appear")
+    }
+
+    private func shot(_ name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// Any element whose accessibility label contains the text (rows combine their children).
+    private func element(containing text: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+
+    private func switchRole(_ title: String) {
+        let button = app.segmentedControls["rolePicker"].buttons[title]
+        XCTAssertTrue(button.waitForExistence(timeout: 10), "Role button \(title) missing")
+        button.tap()
+        XCTAssertTrue(app.tabBars.buttons["Journal"].waitForExistence(timeout: 10))
+    }
+
+    private func openTab(_ title: String) {
+        let tab = app.tabBars.buttons[title]
+        XCTAssertTrue(tab.waitForExistence(timeout: 10), "Tab \(title) missing")
+        tab.tap()
+    }
+
+    private func scrollUntilHittable(_ element: XCUIElement, maxSwipes: Int = 8) {
+        _ = element.waitForExistence(timeout: 10)
+        var swipes = 0
+        while !element.isHittable && swipes < maxSwipes { app.swipeUp(); swipes += 1 }
+        XCTAssertTrue(element.isHittable, "Could not scroll to \(element)")
+    }
+
+    private func addEntry(title: String, body: String, intensityTaps: Int = 0) {
+        let add = app.buttons["primaryAddButton"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        let titleField = app.textFields["entryTitle"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 10))
+        titleField.tap()
+        titleField.typeText(title)
+        let bodyField = app.textFields["entryBody"].exists ? app.textFields["entryBody"] : app.textViews["entryBody"]
+        if bodyField.waitForExistence(timeout: 5) { bodyField.tap(); bodyField.typeText(body) }
+        if intensityTaps > 0 {
+            let stepper = app.steppers["intensityStepper"]
+            XCTAssertTrue(stepper.waitForExistence(timeout: 5))
+            for _ in 0..<intensityTaps { stepper.buttons.element(boundBy: 1).tap() }
+        }
+        shot("editor-\(title)")
+        let save = app.buttons["saveEntry"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        save.tap()
+        XCTAssertTrue(app.buttons["primaryAddButton"].waitForExistence(timeout: 10), "Editor did not close")
+    }
+
+    private func setGrant(role: String, action: String, kind: String) {
+        let disclosure = app.staticTexts["disclosure-\(role)-\(kind)"]
+        scrollUntilHittable(disclosure)
+        disclosure.tap()
+        let toggle = app.switches["grant-\(role)-\(action)-\(kind)"]
+        scrollUntilHittable(toggle)
+        // Tap the trailing edge so the switch itself, not the label, receives the tap.
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+    }
+
+    // MARK: Flows
+
+    func testSurvivorLogsSymptomAndJournalShowsIt() {
+        launch()
+        shot("01-today-survivor")
+        addEntry(title: "Bright lights tiring", body: "Fictional UI test entry", intensityTaps: 1)
+        openTab("Journal")
+        let row = element(containing: "Bright lights tiring")
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "Logged symptom missing from Journal")
+        XCTAssertTrue(element(containing: "Intensity 3 of 5").exists, "Intensity not shown in Journal")
+        shot("02-journal-with-new-symptom")
+    }
+
+    func testFilesTabQuickLookOfFictionalMRI() {
+        launch()
+        openTab("Files")
+        XCTAssertTrue(app.staticTexts["Fictional attachments only"].waitForExistence(timeout: 10))
+        let preview = app.buttons["previewFile"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10), "Sample MRI row missing")
+        shot("03-files-list")
+        preview.tap()
+        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForExistence(timeout: 15), "Quick Look sheet did not appear")
+        sleep(2)
+        shot("04-quicklook-fictional-mri")
+        app.navigationBars["Fictional file preview"].buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Fictional attachments only"].waitForExistence(timeout: 10))
+    }
+
+    func testControlTabTogglesCaregiverPermission() {
+        launch()
+        openTab("Control")
+        XCTAssertTrue(app.staticTexts["The survivor stays in control"].waitForExistence(timeout: 10))
+        setGrant(role: "caregiver", action: "read", kind: "symptoms")
+        let toggle = app.switches["grant-caregiver-read-symptoms"]
+        XCTAssertEqual(toggle.value as? String, "1", "Caregiver read Symptoms should now be on")
+        shot("05-control-caregiver-read-granted")
+        // The caregiver can now read symptom history in the Journal.
+        switchRole("Caregiver")
+        openTab("Journal")
+        app.buttons["Entry type"].tap()
+        app.buttons["Symptoms"].tap()
+        XCTAssertTrue(element(containing: "Noise felt tiring").waitForExistence(timeout: 10), "Granted history should be readable")
+        XCTAssertFalse(app.staticTexts["History is private"].exists)
+        shot("06-caregiver-reads-granted-history")
+    }
+
+    func testCaregiverObservationPrivateHistoryAndCheckIn() {
+        launch()
+        switchRole("Caregiver")
+        shot("07-today-caregiver")
+        addEntry(title: "Rested after noise", body: "Fictional caregiver observation")
+        openTab("Journal")
+        XCTAssertTrue(element(containing: "Rested after noise").waitForExistence(timeout: 10), "Observation missing")
+        // Symptom history is private to the caregiver by default.
+        app.buttons["Entry type"].tap()
+        app.buttons["Symptoms"].tap()
+        XCTAssertTrue(app.staticTexts["History is private"].waitForExistence(timeout: 10), "Private state not shown")
+        XCTAssertFalse(element(containing: "Noise felt tiring").exists, "Symptom history leaked to caregiver")
+        shot("08-caregiver-history-private")
+        // Suggest a check-in and a break; the survivor sees the card and can dismiss it.
+        openTab("Today")
+        let suggest = app.buttons["Suggest a check-in"]
+        scrollUntilHittable(suggest)
+        suggest.tap()
+        let breakButton = app.buttons["Suggest taking a break"]
+        scrollUntilHittable(breakButton)
+        breakButton.tap()
+        shot("09-caregiver-suggested")
+        switchRole("Survivor")
+        let card = app.staticTexts["A gentle check-in"]
+        XCTAssertTrue(card.waitForExistence(timeout: 10), "Survivor should see the check-in card")
+        shot("10-survivor-checkin-card")
+        let dismiss = app.buttons["Dismiss check-in"]
+        scrollUntilHittable(dismiss)
+        dismiss.tap()
+        XCTAssertTrue(waitForDisappearance(card), "Check-in card should be dismissed")
+    }
+
+    func testClinicianNoteAndAttachmentUploadOnlyWhenGranted() {
+        launch()
+        switchRole("Clinician")
+        addEntry(title: "Review noise triggers", body: "Fictional clinician note")
+        openTab("Journal")
+        XCTAssertTrue(element(containing: "Review noise triggers").waitForExistence(timeout: 10), "Note missing")
+        openTab("Files")
+        XCTAssertTrue(app.buttons["previewFile"].waitForExistence(timeout: 10), "Clinician may read shared files by default")
+        XCTAssertFalse(app.buttons["importFile"].exists, "Upload must be hidden until granted")
+        shot("11-clinician-files-no-upload")
+        // Survivor grants add on Files for the clinician.
+        switchRole("Survivor")
+        openTab("Control")
+        setGrant(role: "clinician", action: "add", kind: "attachments")
+        shot("12-control-clinician-upload-granted")
+        switchRole("Clinician")
+        openTab("Files")
+        XCTAssertTrue(app.buttons["importFile"].waitForExistence(timeout: 10), "Upload should appear once granted")
+        shot("13-clinician-files-upload-available")
+    }
+
+    func testResetDemoRestoresSeeds() {
+        launch()
+        addEntry(title: "Temporary entry", body: "Fictional, to be reset")
+        openTab("Journal")
+        XCTAssertTrue(element(containing: "Temporary entry").waitForExistence(timeout: 10))
+        openTab("Control")
+        let reset = app.buttons["resetDemo"]
+        scrollUntilHittable(reset)
+        reset.tap()
+        let confirm = app.buttons["Reset demo"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10))
+        confirm.tap()
+        openTab("Journal")
+        XCTAssertTrue(element(containing: "Noise felt tiring").waitForExistence(timeout: 10), "Seed entry not restored")
+        XCTAssertFalse(element(containing: "Temporary entry").exists, "Added entry survived reset")
+        shot("14-after-reset")
+    }
+
+    func testTodayAtAccessibilityExtraLargeDynamicType() {
+        launch(extraArguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"])
+        XCTAssertTrue(app.buttons["primaryAddButton"].isHittable || app.buttons["primaryAddButton"].exists)
+        XCTAssertTrue(app.staticTexts["Today"].exists || app.navigationBars["Today"].exists)
+        shot("15-today-accessibility-xl")
+    }
+
+    private func waitForDisappearance(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+}

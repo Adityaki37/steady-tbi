@@ -6,10 +6,14 @@ const project = xcode.project(path.resolve(__dirname,'../Steady.xcodeproj/projec
 project.parseSync();
 const objects = project.hash.project.objects;
 const targets = Object.values(objects.PBXNativeTarget).filter(x=>x && typeof x==='object');
-assert.equal(targets.length,2);
+assert.equal(targets.length,3);
 const app = targets.find(target=>target.name==='Steady');
 assert.ok(app);
 assert.ok(targets.find(target=>target.name==='SteadyAppTests'));
+const ui = targets.find(target=>target.name==='SteadyUITests');
+assert.ok(ui);
+assert.equal(ui.productType,'"com.apple.product-type.bundle.ui-testing"');
+assert.ok(fs.readFileSync(path.resolve(__dirname,'../Steady.xcodeproj/xcshareddata/xcschemes/Steady.xcscheme'),'utf8').includes('BlueprintName="SteadyUITests"'));
 const sourcePhase=app.buildPhases.map(id=>objects.PBXSourcesBuildPhase[id]).find(Boolean);
 assert.equal(sourcePhase.files.length,5);
 fs.writeFileSync(path.resolve(__dirname,'../Validation/project-parser-results.json'),JSON.stringify({status:'PASS',parser:'xcode npm 3.0.1',target:'Steady',appSwiftSources:5,appHostedTestTarget:'SteadyAppTests',scope:'OpenStep project parse and target structure only; not Xcode build'},null,2)+'\n');

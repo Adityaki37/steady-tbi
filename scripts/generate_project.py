@@ -75,10 +75,14 @@ product=obj('product','isa = PBXFileReference; explicitFileType = wrapper.applic
 testproduct=obj('testproduct','isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SteadyAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
 testref=obj('testref','isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudClientTests.swift; sourceTree = "<group>";')
 testbuild=obj('testbuild',f'isa = PBXBuildFile; fileRef = {testref};')
+uitestproduct=obj('uitestproduct','isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SteadyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
+uitestref=obj('uitestref','isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteadyUITests.swift; sourceTree = "<group>";')
+uitestbuild=obj('uitestbuild',f'isa = PBXBuildFile; fileRef = {uitestref};')
+uitestgroup=obj('uitestgroup',f'isa = PBXGroup; children = ({uitestref},); path = SteadyUITests; sourceTree = "<group>";')
 testgroup=obj('testgroup',f'isa = PBXGroup; children = ({testref},); path = AppTests; sourceTree = "<group>";')
 appgroup=obj('appgroup',f'isa = PBXGroup; children = ({",".join(refs+[assetref,resref])},); path = Steady; sourceTree = "<group>";')
-productgroup=obj('productgroup',f'isa = PBXGroup; children = ({product},{testproduct},); name = Products; sourceTree = "<group>";')
-rootgroup=obj('rootgroup',f'isa = PBXGroup; children = ({appgroup},{testgroup},{productgroup},); sourceTree = "<group>";')
+productgroup=obj('productgroup',f'isa = PBXGroup; children = ({product},{testproduct},{uitestproduct},); name = Products; sourceTree = "<group>";')
+rootgroup=obj('rootgroup',f'isa = PBXGroup; children = ({appgroup},{testgroup},{uitestgroup},{productgroup},); sourceTree = "<group>";')
 package=obj('package','isa = XCLocalSwiftPackageReference; relativePath = .;')
 packageproduct=obj('packageproduct',f'isa = XCSwiftPackageProductDependency; package = {package}; productName = SteadyCore;')
 linkbuild=obj('linkbuild',f'isa = PBXBuildFile; productRef = {packageproduct};')
@@ -92,6 +96,7 @@ projectdebug=config('projectdebug',projectcommon+'DEBUG_INFORMATION_FORMAT = dwa
 projectrelease=config('projectrelease',projectcommon+'DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O";')
 targetcommon='''ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 0.1.0;
+INFOPLIST_KEY_UIBackgroundModes = "remote-notification";
 GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = Steady;
 INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -114,7 +119,16 @@ testconfigs=obj('testconfigs',f'isa = XCConfigurationList; buildConfigurations =
 proxy=obj('testproxy',f'isa = PBXContainerItemProxy; containerPortal = {ident("project")}; proxyType = 1; remoteGlobalIDString = {target}; remoteInfo = Steady;')
 dependency=obj('testdependency',f'isa = PBXTargetDependency; target = {target}; targetProxy = {proxy};')
 testtarget=obj('testtarget',f'isa = PBXNativeTarget; buildConfigurationList = {testconfigs}; buildPhases = ({testsourcephase},{testframeworkphase},); buildRules = (); dependencies = ({dependency},); name = SteadyAppTests; productName = SteadyAppTests; productReference = {testproduct}; productType = "com.apple.product-type.bundle.unit-test";')
-project=obj('project',f'isa = PBXProject; attributes = {{ BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = {{ {target} = {{ CreatedOnToolsVersion = 16.0; }}; {testtarget} = {{ CreatedOnToolsVersion = 16.0; TestTargetID = {target}; }}; }}; }}; buildConfigurationList = {projectconfigs}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,); mainGroup = {rootgroup}; packageReferences = ({package},); productRefGroup = {productgroup}; projectDirPath = ""; projectRoot = ""; targets = ({target},{testtarget},);')
+uitestsourcephase=obj('uitestsourcephase',f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({uitestbuild},); runOnlyForDeploymentPostprocessing = 0;')
+uitestframeworkphase=obj('uitestframeworkphase','isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;')
+uitestcommon='CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.aditya.steadydemo.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; TARGETED_DEVICE_FAMILY = "1,2"; TEST_TARGET_NAME = Steady;'
+uitestdebug=config('uitestdebug',uitestcommon)
+uitestrelease=config('uitestrelease',uitestcommon)
+uitestconfigs=obj('uitestconfigs',f'isa = XCConfigurationList; buildConfigurations = ({uitestdebug},{uitestrelease},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;')
+uiproxy=obj('uitestproxy',f'isa = PBXContainerItemProxy; containerPortal = {ident("project")}; proxyType = 1; remoteGlobalIDString = {target}; remoteInfo = Steady;')
+uidependency=obj('uitestdependency',f'isa = PBXTargetDependency; target = {target}; targetProxy = {uiproxy};')
+uitesttarget=obj('uitesttarget',f'isa = PBXNativeTarget; buildConfigurationList = {uitestconfigs}; buildPhases = ({uitestsourcephase},{uitestframeworkphase},); buildRules = (); dependencies = ({uidependency},); name = SteadyUITests; productName = SteadyUITests; productReference = {uitestproduct}; productType = "com.apple.product-type.bundle.ui-testing";')
+project=obj('project',f'isa = PBXProject; attributes = {{ BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = {{ {target} = {{ CreatedOnToolsVersion = 16.0; }}; {testtarget} = {{ CreatedOnToolsVersion = 16.0; TestTargetID = {target}; }}; {uitesttarget} = {{ CreatedOnToolsVersion = 16.0; TestTargetID = {target}; }}; }}; }}; buildConfigurationList = {projectconfigs}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,); mainGroup = {rootgroup}; packageReferences = ({package},); productRefGroup = {productgroup}; projectDirPath = ""; projectRoot = ""; targets = ({target},{testtarget},{uitesttarget},);')
 PROJECT.mkdir(exist_ok=True)
 sections='\n'.join(f'/* Begin {section} section */\n'+ '\n'.join(entries)+f'\n/* End {section} section */' for section,entries in sorted(objects.items()))
 (PROJECT/'project.pbxproj').write_text('// !$*UTF8*$!\n{\narchiveVersion = 1;\nclasses = {};\nobjectVersion = 56;\nobjects = {\n'+sections+f'\n}};\nrootObject = {project};\n}}\n')
@@ -122,7 +136,7 @@ scheme=PROJECT/'xcshareddata'/'xcschemes'; scheme.mkdir(parents=True,exist_ok=Tr
 (scheme/'Steady.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="1600" version="1.3">
  <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Steady.app" BlueprintName="Steady" ReferencedContainer="container:Steady.xcodeproj"/></BuildActionEntry></BuildActionEntries></BuildAction>
- <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{testtarget}" BuildableName="SteadyAppTests.xctest" BlueprintName="SteadyAppTests" ReferencedContainer="container:Steady.xcodeproj"/></TestableReference></Testables></TestAction>
+ <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{testtarget}" BuildableName="SteadyAppTests.xctest" BlueprintName="SteadyAppTests" ReferencedContainer="container:Steady.xcodeproj"/></TestableReference><TestableReference skipped="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{uitesttarget}" BuildableName="SteadyUITests.xctest" BlueprintName="SteadyUITests" ReferencedContainer="container:Steady.xcodeproj"/></TestableReference></Testables></TestAction>
  <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Steady.app" BlueprintName="Steady" ReferencedContainer="container:Steady.xcodeproj"/></BuildableProductRunnable></LaunchAction>
  <ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES" savedToolIdentifier="" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Steady.app" BlueprintName="Steady" ReferencedContainer="container:Steady.xcodeproj"/></BuildableProductRunnable></ProfileAction>
  <AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/>
