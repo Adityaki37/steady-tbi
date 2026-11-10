@@ -81,7 +81,7 @@ struct AccountView: View {
         Section("Backend setup is pending") {
             Label("The local demo works now", systemImage: "checkmark.circle")
             Text("A new Supabase project must be configured before separate devices can share fictional data. No hosted database was provisioned with this source project.")
-            Text("On your Mac, follow backend/README.md. Copy Resources/Backend.example.plist to Backend.local.plist and enter the project URL and publishable key, then rebuild.")
+            Text("On your Mac, follow backend/README.md. Copy SteadyResources/Backend.example.plist to Backend.local.plist and enter the project URL and publishable key, then rebuild.")
         }
     }
     private var signInSection: some View {
@@ -133,7 +133,7 @@ struct AccountView: View {
                 Button(kind == .attachments ? "Import a fictional file" : "Add fictional entry") { if kind == .attachments { importing = true } else { editor = true } }.disabled(busy)
                 if kind == .attachments {
                     Button("Upload bundled fictional MRI illustration") {
-                        guard let url = Bundle.main.url(forResource: "Fictional-brain-MRI", withExtension: "png", subdirectory: "Resources") else { return }
+                        guard let url = Bundle.main.url(forResource: "Fictional-brain-MRI", withExtension: "png", subdirectory: "SteadyResources") else { return }
                         Task { await perform { try await client.upload(url) } }
                     }.disabled(busy)
                     Text("Clearly labeled fictional illustration, not a real patient scan. Steady does not diagnose or interpret imaging. The survivor controls who may add files; any member the survivor authorizes (including a clinician) can upload one here.").font(.caption).foregroundStyle(.secondary)

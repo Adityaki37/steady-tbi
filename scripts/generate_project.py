@@ -18,7 +18,7 @@ def font(size, bold=False):
         if path.exists(): return ImageFont.truetype(str(path), size)
     return ImageFont.load_default(size=size)
 
-resources = APP / 'Resources'; resources.mkdir(parents=True, exist_ok=True)
+resources = APP / 'SteadyResources'; resources.mkdir(parents=True, exist_ok=True)
 image = Image.new('RGB', (1200, 1400), '#10151c'); d = ImageDraw.Draw(image)
 d.text((70, 55), 'FICTIONAL BRAIN MRI', font=font(62, True), fill='#e5eff0')
 d.text((70, 138), 'SYNTHETIC ILLUSTRATION / DEMO ONLY', font=font(31, True), fill='#92c4b8')
@@ -68,7 +68,7 @@ for source in sources:
     ref=obj('ref:'+source, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {source}; sourceTree = "<group>";')
     refs.append(ref); builds.append(obj('build:'+source, f'isa = PBXBuildFile; fileRef = {ref};'))
 assetref=obj('assetref','isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>";')
-resref=obj('resref','isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>";')
+resref=obj('resref','isa = PBXFileReference; lastKnownFileType = folder; path = SteadyResources; sourceTree = "<group>";')
 assetbuild=obj('assetbuild',f'isa = PBXBuildFile; fileRef = {assetref};')
 resbuild=obj('resbuild',f'isa = PBXBuildFile; fileRef = {resref};')
 product=obj('product','isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Steady.app; sourceTree = BUILT_PRODUCTS_DIR;')

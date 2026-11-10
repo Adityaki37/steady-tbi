@@ -25,7 +25,7 @@ D3CC244FE3B63DFF710117B7 = { isa = PBXFileReference; lastKnownFileType = sourcec
 BA6B9A86356D084E2900A669 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudClient.swift; sourceTree = "<group>"; };
 98F2055ABF1248FF80E0FFF2 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
 5FA6AECFE23C52818DAFF8A1 = { isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-2F613E23EE8DDAB09453C7BF = { isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
+2F613E23EE8DDAB09453C7BF = { isa = PBXFileReference; lastKnownFileType = folder; path = SteadyResources; sourceTree = "<group>"; };
 38A007151ABE87CC01A5B6E9 = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Steady.app; sourceTree = BUILT_PRODUCTS_DIR; };
 B7480EC88B7F22D0A4757273 = { isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SteadyAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 AEAE4B28CDFF08F590396BA5 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudClientTests.swift; sourceTree = "<group>"; };

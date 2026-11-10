@@ -34,10 +34,13 @@ require(pbx.count('CODE_SIGN_ENTITLEMENTS = Steady/Steady.entitlements;')==2, 'B
 require('INFOPLIST_KEY_UIBackgroundModes = "remote-notification";' in pbx and pbx.count('INFOPLIST_KEY_UIBackgroundModes = "remote-notification";')==2, 'Both app configs declare the remote-notification background mode')
 for file in (ROOT/'Steady/Assets.xcassets').rglob('Contents.json'):
     obj=json.loads(file.read_text()); require(obj.get('info',{}).get('version')==1, f'Valid asset manifest: {file.parent.name}')
-config=plistlib.loads((ROOT/'Steady/Resources/Backend.example.plist').read_bytes())
+folder_refs=re.findall(r'lastKnownFileType = folder; path = ([^;]+);',pbx)
+require(folder_refs and 'Resources' not in folder_refs, 'No top-level bundle folder reference is named Resources (breaks iOS codesign/install)')
+require(not (ROOT/'Steady/Resources').exists(), 'No Steady/Resources directory')
+config=plistlib.loads((ROOT/'Steady/SteadyResources/Backend.example.plist').read_bytes())
 require(set(config)=={'SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY'}, 'Only public client config keys in template')
-require(not (ROOT/'Steady/Resources/Backend.local.plist').exists(), 'No configured hosted backend in deliverable')
-image=ROOT/'Steady/Resources/Fictional-brain-MRI.png'
+require(not (ROOT/'Steady/SteadyResources/Backend.local.plist').exists(), 'No configured hosted backend in deliverable')
+image=ROOT/'Steady/SteadyResources/Fictional-brain-MRI.png'
 raw=image.read_bytes()
 require(raw[:8]==b'\x89PNG\r\n\x1a\n' and struct.unpack('>II',raw[16:24])==(1200,1400), 'Fictional MRI PNG has expected format and dimensions')
 sql=(ROOT/'backend/schema.sql').read_text()

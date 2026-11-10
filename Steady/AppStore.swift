@@ -84,7 +84,7 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
         guard let file = record.attachment else { throw DemoError.missing }
         let url: URL
         if file.isBundledSample {
-            guard let sample = Bundle.main.url(forResource: "Fictional-brain-MRI", withExtension: "png", subdirectory: "Resources") else { throw DemoError.missing }; url = sample
+            guard let sample = Bundle.main.url(forResource: "Fictional-brain-MRI", withExtension: "png", subdirectory: "SteadyResources") else { throw DemoError.missing }; url = sample
         } else { url = filesDirectory.appendingPathComponent(file.filename) }
         guard FileManager.default.fileExists(atPath: url.path) else { throw DemoError.invalid("The local file is missing. Reimport a fictional copy.") }
         return url

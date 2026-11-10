@@ -7,7 +7,7 @@ struct BackendConfig {
     let url: URL
     let key: String
     static func load() -> BackendConfig? {
-        guard let file = Bundle.main.url(forResource: "Backend.local", withExtension: "plist", subdirectory: "Resources"),
+        guard let file = Bundle.main.url(forResource: "Backend.local", withExtension: "plist", subdirectory: "SteadyResources"),
               let data = try? Data(contentsOf: file),
               let dictionary = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String],
               let value = dictionary["SUPABASE_URL"], let url = URL(string: value), url.scheme == "https", url.host != nil,
