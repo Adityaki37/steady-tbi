@@ -42,6 +42,6 @@
     "CLI-created migration matches schema source exactly",
     "Seven core Swift tests supplied (not executed here)"
   ],
-  "schemaSHA256": "25e5e3aa1d37869c55812eebcb2f26559b7b32c227ff1f75b7d6e64e0a2ec589",
+  "schemaSHA256": "9d9edeef9b747dec4667633edf0be809c342a592a676e59e08f3ccff05dee6e4",
   "scope": "Structural source/project/asset checks only. Not Swift compilation, XCTest execution, or device validation."
 }
