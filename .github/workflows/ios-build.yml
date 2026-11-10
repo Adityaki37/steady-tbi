@@ -57,6 +57,12 @@ jobs:
           sleep 6
           xcrun simctl io "$UDID" screenshot screenshots/02-today-dark.png
           xcrun simctl spawn "$UDID" log show --last 2m --predicate 'process == "Steady"' --style compact 2>/dev/null | grep -iE "fault|crash|error" | head -40 || true
+      - name: Print downscaled screenshots
+        run: |
+          for f in screenshots/*.png; do
+            sips -Z 900 "$f" --out "$f.small.jpg" -s format jpeg -s formatOptions 70 >/dev/null
+            echo "BEGIN_SHOT $(basename $f)"; base64 -i "$f.small.jpg" | fold -w 1000; echo "END_SHOT"
+          done
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
