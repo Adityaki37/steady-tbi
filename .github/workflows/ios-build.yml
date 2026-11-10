@@ -38,6 +38,31 @@ jobs:
           xcodebuild -project Steady.xcodeproj -scheme Steady \
             -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedDataTest \
             CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test 2>&1 | tee test.log | tail -150
+      - name: Launch in simulator and capture screenshots
+        run: |
+          DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9A-Za-z ]+ \(' | sed 's/ ($//')
+          UDID=$(xcrun simctl list devices available | grep -m1 "$DEVICE (" | grep -oE '[0-9A-F-]{36}')
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          APP=DerivedDataTest/Build/Products/Debug-iphonesimulator/Steady.app
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p screenshots
+          xcrun simctl ui "$UDID" appearance light
+          xcrun simctl launch "$UDID" com.aditya.steadydemo
+          sleep 8
+          xcrun simctl io "$UDID" screenshot screenshots/01-today-light.png
+          xcrun simctl terminate "$UDID" com.aditya.steadydemo || true
+          xcrun simctl ui "$UDID" appearance dark
+          xcrun simctl launch "$UDID" com.aditya.steadydemo
+          sleep 6
+          xcrun simctl io "$UDID" screenshot screenshots/02-today-dark.png
+          xcrun simctl spawn "$UDID" log show --last 2m --predicate 'process == "Steady"' --style compact 2>/dev/null | grep -iE "fault|crash|error" | head -40 || true
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screenshots
+          path: screenshots/
       - name: Show generated Info.plist and signature state
         if: always()
         run: |
