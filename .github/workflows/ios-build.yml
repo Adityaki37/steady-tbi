@@ -1,0 +1,48 @@
+name: iOS build and tests
+
+on:
+  push:
+    branches: [feat/push-notifications-and-clinician-upload]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+          xcrun simctl list devices available | head -30
+      - name: Swift package tests (SteadyCore)
+        run: swift test
+      - name: Project structure checks
+        run: python3 scripts/verify_project.py
+      - name: Unsigned simulator build
+        run: |
+          set -o pipefail
+          xcodebuild -project Steady.xcodeproj -scheme Steady -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | tail -150
+      - name: App-hosted tests on a simulator
+        run: |
+          set -o pipefail
+          DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9A-Za-z ]+ \(' | sed 's/ ($//')
+          echo "Using simulator: $DEVICE"
+          xcodebuild -project Steady.xcodeproj -scheme Steady \
+            -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO test 2>&1 | tee test.log | tail -150
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-logs
+          path: |
+            build.log
+            test.log
