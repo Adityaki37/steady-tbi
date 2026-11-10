@@ -64,6 +64,18 @@ final class SteadyUITests: XCTestCase {
         XCTAssertTrue(element.isHittable, "Could not scroll to \(element)")
     }
 
+    /// Waits for the app's notice alert, checks its title, captures it, taps OK and waits for it to go away.
+    private func dismissAlert(expectingTitle title: String, screenshot name: String) {
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "Expected alert \"\(title)\" did not appear")
+        XCTAssertTrue(alert.label.contains(title) || alert.staticTexts[title].exists, "Unexpected alert: \(alert.debugDescription)")
+        shot(name)
+        let ok = alert.buttons["OK"]
+        XCTAssertTrue(ok.exists, "Alert has no OK button")
+        ok.tap()
+        XCTAssertTrue(waitForDisappearance(alert), "Alert \"\(title)\" did not dismiss")
+    }
+
     private func addEntry(title: String, body: String, intensityTaps: Int = 0) {
         let add = app.buttons["primaryAddButton"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
@@ -158,10 +170,12 @@ final class SteadyUITests: XCTestCase {
         let suggest = app.buttons["Suggest a check-in"]
         scrollUntilHittable(suggest)
         suggest.tap()
+        // The app confirms with a modal alert that covers the Today screen until dismissed.
+        dismissAlert(expectingTitle: "Check-in saved", screenshot: "09a-caregiver-checkin-saved")
         let breakButton = app.buttons["Suggest taking a break"]
         scrollUntilHittable(breakButton)
         breakButton.tap()
-        shot("09-caregiver-suggested")
+        dismissAlert(expectingTitle: "Prompt saved", screenshot: "09-caregiver-suggested")
         switchRole("Survivor")
         let card = element(containing: "A gentle check-in")
         XCTAssertTrue(card.waitForExistence(timeout: 10), "Survivor should see the check-in card")
