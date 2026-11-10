@@ -35,38 +35,91 @@ jobs:
           set -o pipefail
           DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9A-Za-z ]+ \(' | sed 's/ ($//')
           echo "Using simulator: $DEVICE"
+          rc=0
           xcodebuild -project Steady.xcodeproj -scheme Steady \
             -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedDataTest \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test 2>&1 | tee test.log | tail -150
+            -skip-testing:SteadyUITests \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test > test.log 2>&1 || rc=$?
+          echo "=== APP_TESTS_SUMMARY (full log, filtered) ==="
+          grep -E "error: |XCTAssert|failed \(|Test Case .*(passed|failed)|Executed [0-9]+ test|TEST (SUCCEEDED|FAILED)" test.log || true
+          echo "=== APP_TESTS_TAIL ==="
+          tail -40 test.log
+          echo "APP_TESTS_EXIT=$rc"
+          exit $rc
       - name: UI tests (XCUITest) on a simulator
         id: uitest
+        if: success() || failure()
         continue-on-error: true
         run: |
           set -o pipefail
           rm -rf UITests.xcresult
           DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9A-Za-z ]+ \(' | sed 's/ ($//')
           echo "Using simulator: $DEVICE"
+          rc=0
           xcodebuild -project Steady.xcodeproj -scheme Steady \
             -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedDataUITest \
             -resultBundlePath UITests.xcresult -only-testing:SteadyUITests \
-            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test 2>&1 | tee uitest.log | tail -150
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test > uitest.log 2>&1 || rc=$?
+          echo "=== UI_TESTS_SUMMARY (full log, filtered) ==="
+          grep -E "error: |XCTAssert|failed \(|Test Case .*(passed|failed)|Executed [0-9]+ test|TEST (SUCCEEDED|FAILED)" uitest.log || true
+          echo "=== UI_TESTS_TAIL ==="
+          tail -40 uitest.log
+          echo "UI_TESTS_EXIT=$rc"
+          exit $rc
       - name: Export and print UI test screenshots
         if: always()
         continue-on-error: true
         run: |
-          mkdir -p uishots
-          echo "=== UI test results ==="
-          grep -E "Test (Case|Suite).*(passed|failed)|Executed [0-9]+ test|TEST (SUCCEEDED|FAILED)" uitest.log || true
-          xcrun xcresulttool export attachments --path UITests.xcresult --output-path uishots || echo "attachment export failed"
-          ls uishots | head -40
-          if [ -f uishots/manifest.json ]; then echo "=== manifest.json ==="; cat uishots/manifest.json | head -c 6000; echo; fi
+          rm -rf uishots; mkdir -p uishots
+          if [ ! -d UITests.xcresult ]; then echo "UI_SHOTS: no UITests.xcresult (UI test step did not produce a bundle)"; exit 0; fi
+          echo "=== UI test failure summary from xcresult ==="
+          xcrun xcresulttool get test-results summary --path UITests.xcresult 2>&1 | head -c 8000 || true
+          xcrun xcresulttool export attachments --path UITests.xcresult --output-path uishots --only-failures 2>&1 | tail -5 || true
+          mkdir -p uishots/failures; mv uishots/*.png uishots/*.jpeg uishots/*.jpg uishots/failures/ 2>/dev/null || true
+          [ -f uishots/manifest.json ] && mv uishots/manifest.json uishots/failures/manifest.json
+          xcrun xcresulttool export attachments --path UITests.xcresult --output-path uishots 2>&1 | tail -5 || echo "attachment export failed"
+          ls uishots | head -60
+          if [ -f uishots/manifest.json ]; then echo "=== manifest.json ==="; head -c 6000 uishots/manifest.json; echo; fi
+          # Build a "name<TAB>file" list. Prefer suggested names from the manifests; failures first.
+          python3 - <<'PY'
+          import json, os, re
+          out = []
+          for d, tag in (("uishots/failures", "FAILED"), ("uishots", "")):
+              m = os.path.join(d, "manifest.json")
+              if not os.path.exists(m):
+                  continue
+              try:
+                  data = json.load(open(m))
+              except Exception as e:
+                  print("manifest parse error", e); continue
+              for test in data if isinstance(data, list) else []:
+                  tname = re.sub(r"[^A-Za-z0-9]+", "_", str(test.get("testIdentifier", "test"))).strip("_")
+                  for att in test.get("attachments", []):
+                      f = os.path.join(d, att.get("exportedFileName", ""))
+                      if not os.path.isfile(f) or not f.lower().endswith((".png", ".jpg", ".jpeg")):
+                          continue
+                      label = att.get("suggestedHumanReadableName") or os.path.basename(f)
+                      label = re.sub(r"[^A-Za-z0-9._-]+", "_", label)
+                      out.append("%s\t%s_%s%s\t%s" % (tag or "OK", tname[-60:], label[:60], "", f))
+          # Fallback: any image not listed
+          seen = {l.split("\t")[2] for l in out}
+          for d, tag in (("uishots/failures", "FAILED"), ("uishots", "")):
+              if os.path.isdir(d):
+                  for n in sorted(os.listdir(d)):
+                      f = os.path.join(d, n)
+                      if f not in seen and n.lower().endswith((".png", ".jpg", ".jpeg")):
+                          out.append("%s\t%s\t%s" % (tag or "OK", n, f))
+          # Failures first, de-duplicated by file content name
+          out.sort(key=lambda l: 0 if l.startswith("FAILED") else 1)
+          open("uishots/list.tsv", "w").write("\n".join(out) + "\n")
+          PY
           COUNT=0
-          for f in uishots/*.png; do
-            [ -e "$f" ] || continue
+          while IFS=$'\t' read -r tag name f; do
+            [ -n "$f" ] || continue
             COUNT=$((COUNT+1)); [ "$COUNT" -gt 15 ] && break
-            sips -Z 900 "$f" --out "$f.small.jpg" -s format jpeg -s formatOptions 70 >/dev/null
-            echo "BEGIN_SHOT $(basename "$f" .png)"; base64 -i "$f.small.jpg" | fold -w 1000; echo "END_SHOT"
-          done
+            sips -Z 900 "$f" --out "$f.small.jpg" -s format jpeg -s formatOptions 70 >/dev/null 2>&1 || continue
+            echo "BEGIN_SHOT $tag $name"; base64 -i "$f.small.jpg" | fold -w 1000; echo "END_SHOT"
+          done < uishots/list.tsv
       - name: Upload UI test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -74,9 +127,12 @@ jobs:
           name: ui-test-results
           path: |
             uishots/
+            test.log
             UITests.xcresult
             uitest.log
       - name: Launch in simulator and capture screenshots
+        if: success() || failure()
+        continue-on-error: true
         run: |
           DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9A-Za-z ]+ \(' | sed 's/ ($//')
           UDID=$(xcrun simctl list devices available | grep -m1 "$DEVICE (" | grep -oE '[0-9A-F-]{36}')
@@ -96,6 +152,8 @@ jobs:
           xcrun simctl io "$UDID" screenshot screenshots/02-today-dark.png
           xcrun simctl spawn "$UDID" log show --last 2m --predicate 'process == "Steady"' --style compact 2>/dev/null | grep -iE "fault|crash|error" | head -40 || true
       - name: Print downscaled screenshots
+        if: success() || failure()
+        continue-on-error: true
         run: |
           for f in screenshots/*.png; do
             sips -Z 900 "$f" --out "$f.small.jpg" -s format jpeg -s formatOptions 70 >/dev/null

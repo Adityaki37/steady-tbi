@@ -135,7 +135,7 @@ struct JournalView: View {
             Section {
                 Picker("Entry type", selection: $kind) {
                     ForEach(RecordKind.allCases.filter { $0 != .attachments }) { Text($0.title).tag($0) }
-                }.pickerStyle(.menu)
+                }.pickerStyle(.menu).accessibilityIdentifier("entryTypePicker")
                 if store.can(kind, .add) { Button { editor = true } label: { Label("Add entry", systemImage: "plus.circle.fill") } }
             }
             if !store.can(kind, .read) {

@@ -44,6 +44,19 @@ final class SteadyUITests: XCTestCase {
         tab.tap()
     }
 
+    /// The menu-style picker's button label also carries the current value ("Entry type, Observations"),
+    /// so find it by identifier or label prefix, then pick the item from the opened menu.
+    private func chooseEntryType(_ title: String) {
+        let byID = app.buttons["entryTypePicker"]
+        let byLabel = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Entry type")).firstMatch
+        let picker = byID.waitForExistence(timeout: 10) ? byID : byLabel
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), "Entry type picker missing")
+        picker.tap()
+        let item = app.buttons[title].exists ? app.buttons[title] : app.menuItems[title]
+        XCTAssertTrue(item.waitForExistence(timeout: 10), "Menu item \(title) missing")
+        item.tap()
+    }
+
     private func scrollUntilHittable(_ element: XCUIElement, maxSwipes: Int = 8) {
         _ = element.waitForExistence(timeout: 10)
         var swipes = 0
@@ -122,10 +135,9 @@ final class SteadyUITests: XCTestCase {
         // The caregiver can now read symptom history in the Journal.
         switchRole("Caregiver")
         openTab("Journal")
-        app.buttons["Entry type"].tap()
-        app.buttons["Symptoms"].tap()
+        chooseEntryType("Symptoms")
         XCTAssertTrue(element(containing: "Noise felt tiring").waitForExistence(timeout: 10), "Granted history should be readable")
-        XCTAssertFalse(app.staticTexts["History is private"].exists)
+        XCTAssertFalse(element(containing: "History is private").exists)
         shot("06-caregiver-reads-granted-history")
     }
 
@@ -137,9 +149,8 @@ final class SteadyUITests: XCTestCase {
         openTab("Journal")
         XCTAssertTrue(element(containing: "Rested after noise").waitForExistence(timeout: 10), "Observation missing")
         // Symptom history is private to the caregiver by default.
-        app.buttons["Entry type"].tap()
-        app.buttons["Symptoms"].tap()
-        XCTAssertTrue(app.staticTexts["History is private"].waitForExistence(timeout: 10), "Private state not shown")
+        chooseEntryType("Symptoms")
+        XCTAssertTrue(element(containing: "History is private").waitForExistence(timeout: 10), "Private state not shown")
         XCTAssertFalse(element(containing: "Noise felt tiring").exists, "Symptom history leaked to caregiver")
         shot("08-caregiver-history-private")
         // Suggest a check-in and a break; the survivor sees the card and can dismiss it.
@@ -152,7 +163,7 @@ final class SteadyUITests: XCTestCase {
         breakButton.tap()
         shot("09-caregiver-suggested")
         switchRole("Survivor")
-        let card = app.staticTexts["A gentle check-in"]
+        let card = element(containing: "A gentle check-in")
         XCTAssertTrue(card.waitForExistence(timeout: 10), "Survivor should see the check-in card")
         shot("10-survivor-checkin-card")
         let dismiss = app.buttons["Dismiss check-in"]
