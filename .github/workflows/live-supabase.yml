@@ -20,18 +20,18 @@ jobs:
           node-version: 22
       - name: Start local Supabase stack
         run: |
-          npx --yes supabase@2.84.2 start -x studio,imgproxy,vector,logflare,edge-runtime,realtime,postgres-meta
+          npx --yes supabase@2.122.0 start -x studio,imgproxy,vector,logflare,edge-runtime,realtime,postgres-meta
       - name: Export stack credentials (masked, never printed)
         run: |
-          npx --yes supabase@2.84.2 status -o json > "$RUNNER_TEMP/status.json"
+          npx --yes supabase@2.122.0 status -o json > "$RUNNER_TEMP/status.json"
           node -e '
             const fs = require("fs");
             const s = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/status.json", "utf8"));
             const pick = (...names) => names.map((n) => s[n]).find(Boolean);
             const values = {
-              SUPABASE_URL: pick("API_URL"),
-              SUPABASE_ANON_KEY: pick("ANON_KEY"),
-              SUPABASE_SERVICE_ROLE_KEY: pick("SERVICE_ROLE_KEY")
+              SUPABASE_URL: pick("API_URL", "SUPABASE_URL"),
+              SUPABASE_ANON_KEY: pick("ANON_KEY", "PUBLISHABLE_KEY"),
+              SUPABASE_SERVICE_ROLE_KEY: pick("SERVICE_ROLE_KEY", "SECRET_KEY")
             };
             for (const [name, value] of Object.entries(values)) {
               if (!value) { console.error("Missing " + name + " in supabase status"); process.exit(1); }
@@ -51,4 +51,4 @@ jobs:
           done
       - name: Stop stack
         if: always()
-        run: npx --yes supabase@2.84.2 stop --no-backup
+        run: npx --yes supabase@2.122.0 stop --no-backup

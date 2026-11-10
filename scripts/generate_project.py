@@ -92,7 +92,7 @@ frameworkphase=obj('frameworkphase',f'isa = PBXFrameworksBuildPhase; buildAction
 
 def config(name, settings): return obj(name, 'isa = XCBuildConfiguration; buildSettings = {' + settings + '}; name = ' + ('Debug' if 'debug' in name else 'Release') + ';')
 projectcommon='CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; '
-projectdebug=config('projectdebug',projectcommon+'DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;')
+projectdebug=config('projectdebug',projectcommon+'DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; ONLY_ACTIVE_ARCH = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;')
 projectrelease=config('projectrelease',projectcommon+'DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O";')
 targetcommon='''ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 0.1.0;

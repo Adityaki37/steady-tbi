@@ -28,6 +28,7 @@ require('path = SteadyUITests.swift;' in pbx and (ROOT/'SteadyUITests/SteadyUITe
 require('BlueprintName="SteadyUITests"' in (ROOT/'Steady.xcodeproj/xcshareddata/xcschemes/Steady.xcscheme').read_text(), 'Shared scheme TestAction includes SteadyUITests')
 require(scheme.getroot().tag=='Scheme', 'Shared Xcode scheme is well-formed XML')
 require('IPHONEOS_DEPLOYMENT_TARGET = 17.0' in pbx, 'iOS deployment target is 17.0')
+require(re.search(r'ENABLE_TESTABILITY = YES;[^}]*ONLY_ACTIVE_ARCH = YES;[^}]*\}; name = Debug;',pbx) is not None and 'ONLY_ACTIVE_ARCH = YES' not in ''.join(re.findall(r'buildSettings = \{[^}]*\}; name = Release;',pbx)), 'Project Debug configuration builds only the active arch (matches SteadyCore module arch), Release does not')
 entitlements_path=ROOT/'Steady/Steady.entitlements'
 require(entitlements_path.is_file(), 'Push entitlements file exists')
 entitlements=plistlib.loads(entitlements_path.read_bytes())

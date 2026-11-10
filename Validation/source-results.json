@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "checks": 39,
+  "checks": 40,
   "details": [
     "Unique Xcode object identifiers",
     "All Xcode object references resolve",
@@ -16,6 +16,7 @@
     "Shared scheme TestAction includes SteadyUITests",
     "Shared Xcode scheme is well-formed XML",
     "iOS deployment target is 17.0",
+    "Project Debug configuration builds only the active arch (matches SteadyCore module arch), Release does not",
     "Push entitlements file exists",
     "APNs entitlement declares development aps-environment (free/dev, not a provisioned paid capability)",
     "Push entitlement is opt-in: default build signs with a free Personal Team",
