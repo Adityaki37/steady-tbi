@@ -2,6 +2,8 @@
 
 Do not mark these passed based on source checks or PostgreSQL tests.
 
+CI context: simulator XCUITests (`SteadyUITests`) are configured to cover local demo flows (logging, Journal, Files preview, permission toggles, caregiver/clinician actions, check-in, reset, large text), and a local Supabase stack e2e script covers the HTTP contract. Neither runs on a physical iPhone, neither runs the iOS app against a live backend, and neither tests remote APNs. The items below stay pending until you perform them on a real device.
+
 ## Local demo
 
 1. First launch: fictional labels are obvious, Survivor role shows two symptom entries, one observation, one clinician note and the labeled fictional MRI file.

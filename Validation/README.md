@@ -13,7 +13,10 @@ Prepared on **DESKTOP-5MIQVIT / Windows 10.0.26300**. No Xcode or Swift executab
 | Offline/manual-refresh app XCTest | **NOT RUN** | `AppTests/CloudClientTests.swift`; run ⌘U in the Steady scheme on Mac |
 | Xcode simulator build / visual screenshots | **NOT RUN** | Requires compatible Mac/Xcode |
 | Free Personal Team signing / iPhone run | **NOT RUN** | Requires user’s Mac, Apple sign-in and connected iPhone |
-| Real Supabase Auth/HTTP/Storage flow | **NOT RUN** | Requires an explicitly chosen new test backend |
+| Simulator UI tests (`SteadyUITests`, local demo mode) | **CI-configured, not run here** | `ios-build.yml` on macos-15; confirm in the Actions run log |
+| Live local Supabase HTTP flow (`test-tools/live-stack.e2e.mjs`) | **CI-configured, not run here** | `live-supabase.yml` on ubuntu-latest with Docker; tests the HTTP contract, not the iOS app |
+| iOS app against a live backend / hosted Supabase project | **NOT RUN** | Requires an explicitly chosen new test backend |
+| Remote APNs push delivery | **NOT RUN** | Needs a paid Apple Developer account, APNs key and a real device |
 | Two-device and accessibility UI acceptance | **NOT RUN** | Follow `MANUAL_TESTS.md` |
 
 The PostgreSQL test engine is PGlite 0.5.13. Its Auth/Storage schemas are test doubles; those tests are not evidence that Supabase authentication, JWT validation, email delivery, file service limits or networking work end-to-end. JSON reports include scope limitations and schema digests.

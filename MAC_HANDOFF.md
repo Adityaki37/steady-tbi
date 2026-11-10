@@ -25,6 +25,12 @@
    - Deploy the function: `supabase functions deploy notify-symptom-break`, and wire the `check_ins` symptom-break trigger to invoke it in the hosted project (see [backend/README.md](backend/README.md)). Then verify delivery on two real devices.
 6. Separate-account mode is source-complete prototype work that still requires a new backend, real service checks, separate test accounts and two-device verification. Follow `backend/README.md`; do not apply the migration to an existing database or provision a paid service without the exact authorization.
 
+## What CI now covers (and what still needs the Mac)
+
+- `ios-build.yml` is configured to run `swift test`, the unsigned simulator build, app-hosted `SteadyAppTests`, and the `SteadyUITests` XCUITest target against the **local demo mode** on a simulator, printing results and downscaled screenshots in the log. Check the latest Actions run before relying on it; if it fails, fix it before the manual checks.
+- `live-supabase.yml` starts an **ephemeral local Supabase stack** in Docker and runs `test-tools/live-stack.e2e.mjs`, which tests the HTTP contract (Auth, REST, Storage, RLS) as `CloudClient` uses it. The **iOS app is not run against this stack**, and no **hosted** Supabase project has been tested. Account mode in the app is still unverified end to end.
+- Still Mac/iPhone only: a physical iPhone run, free Personal Team signing, VoiceOver and layout QA, two-device checks, and all **remote APNs** delivery (needs the paid account, `.p8` key and Edge Function secrets).
+
 ## Known prototype limits
 
 - Account-mode networking/auth/session/Keychain behavior and shared attachment transfers are unverified against a real Supabase project.

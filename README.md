@@ -34,6 +34,17 @@ Supported attachments: PNG/JPEG/PDF, up to 15 MB. Imported files are copied into
 
 ## Verification
 
+### What CI verifies, and what it does not
+
+Two GitHub Actions workflows exist (`.github/workflows/ios-build.yml` on macos-15, `.github/workflows/live-supabase.yml` on ubuntu-latest). They are configured to run these checks, but a green run must be confirmed in the Actions tab; nothing here has been observed passing locally because the authoring sandbox has no Xcode or Docker.
+
+| Area | Configured in CI | Not verified |
+| --- | --- | --- |
+| Swift package tests, unsigned simulator build, app-hosted `SteadyAppTests` | Yes, on an iOS **simulator** | Physical iPhone, free Personal Team signing |
+| `SteadyUITests` (XCUITest) | Drives the **local demo mode** on a simulator: symptom logging, Journal, Files/Quick Look, permission toggles, caregiver and clinician flows, check-in, reset, large Dynamic Type. Screenshots are exported from the xcresult | VoiceOver, device layouts, account mode |
+| Supabase backend | An **ephemeral local Supabase stack** started with Docker in CI (`live-supabase.yml`), exercised by `test-tools/live-stack.e2e.mjs` over HTTP (Auth, PostgREST, Storage) with the same paths and headers as `Steady/CloudClient.swift` | The **hosted** Supabase project (none is provisioned); the iOS app itself is **not run against the live stack**, only the HTTP contract through the Node script |
+| Remote push (APNs) | Nothing. Only the `device_tokens` table and the `symptom_break` check-in without the Edge Function are covered by the e2e script | Edge Function, APNs delivery and token registration. These need a **paid Apple Developer Program account**, an APNs key and a real provisioning profile |
+
 Windows host verified: **DESKTOP-5MIQVIT, Windows 10.0.26300**. Node 24.13.0, Python 3.14 and Git were available; no Swift or Xcode executable was found. No `.agents/skills`, existing project instructions, or prior test/run instructions were present in the initially empty workspace. Xcode cannot run on this OS, so no Xcode installation was attempted here.
 
 Run portable checks:
