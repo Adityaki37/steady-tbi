@@ -41,6 +41,22 @@ struct ContentView: View {
     }
 }
 
+// Filled primary button with readable text in both appearances. The dark-mode
+// accent is a light mint, so white text there would fall far below WCAG AA.
+struct PrimaryButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.isEnabled) private var enabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.body.weight(.semibold))
+            .foregroundStyle(scheme == .dark ? Color(red: 0.04, green: 0.13, blue: 0.11) : .white)
+            .padding(.horizontal, 20).padding(.vertical, 14)
+            .frame(minHeight: 44)
+            .background(Color.accentColor.opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.4),
+                        in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
 private struct Card<Content: View>: View {
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
@@ -62,7 +78,7 @@ struct HomeView: View {
                     Text(roleDescription)
                     if store.can(store.role.contribution, .add) {
                         Button(store.role == .survivor ? "Log a symptom" : store.role == .caregiver ? "Add an observation" : "Add a clinician note") { editor = true }
-                            .buttonStyle(.borderedProminent).controlSize(.large)
+                            .buttonStyle(PrimaryButtonStyle())
                     } else { Label("Adding is off for this role", systemImage: "lock").foregroundStyle(.secondary) }
                 }
                 if store.role == .survivor, let message = store.checkIn() {

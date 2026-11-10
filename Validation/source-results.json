@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "checks": 37,
+  "checks": 36,
   "details": [
     "Unique Xcode object identifiers",
     "All Xcode object references resolve",
@@ -15,8 +15,7 @@
     "iOS deployment target is 17.0",
     "Push entitlements file exists",
     "APNs entitlement declares development aps-environment (free/dev, not a provisioned paid capability)",
-    "App configs wire CODE_SIGN_ENTITLEMENTS to Steady/Steady.entitlements",
-    "Both app configs (Debug and Release) set CODE_SIGN_ENTITLEMENTS",
+    "Push entitlement is opt-in: default build signs with a free Personal Team",
     "Both app configs declare the remote-notification background mode",
     "Valid asset manifest: Assets.xcassets",
     "Valid asset manifest: AccentColor.colorset",

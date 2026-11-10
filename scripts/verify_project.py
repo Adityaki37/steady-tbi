@@ -29,8 +29,7 @@ entitlements_path=ROOT/'Steady/Steady.entitlements'
 require(entitlements_path.is_file(), 'Push entitlements file exists')
 entitlements=plistlib.loads(entitlements_path.read_bytes())
 require(entitlements.get('aps-environment')=='development', 'APNs entitlement declares development aps-environment (free/dev, not a provisioned paid capability)')
-require('CODE_SIGN_ENTITLEMENTS = Steady/Steady.entitlements;' in pbx, 'App configs wire CODE_SIGN_ENTITLEMENTS to Steady/Steady.entitlements')
-require(pbx.count('CODE_SIGN_ENTITLEMENTS = Steady/Steady.entitlements;')==2, 'Both app configs (Debug and Release) set CODE_SIGN_ENTITLEMENTS')
+require('CODE_SIGN_ENTITLEMENTS' not in pbx, 'Push entitlement is opt-in: default build signs with a free Personal Team')
 require('INFOPLIST_KEY_UIBackgroundModes = "remote-notification";' in pbx and pbx.count('INFOPLIST_KEY_UIBackgroundModes = "remote-notification";')==2, 'Both app configs declare the remote-notification background mode')
 for file in (ROOT/'Steady/Assets.xcassets').rglob('Contents.json'):
     obj=json.loads(file.read_text()); require(obj.get('info',{}).get('version')==1, f'Valid asset manifest: {file.parent.name}')
