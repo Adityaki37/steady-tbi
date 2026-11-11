@@ -21,8 +21,8 @@ async function check(label, fn) {
 }
 
 // Mirrors CloudClient.request: apikey + Bearer + Prefer return=minimal|representation.
-async function api(path, { method = 'GET', token, key = anon, body, bytes, mime = 'application/json', representation = false, prefer } = {}) {
-  const headers = { apikey: key, 'Content-Type': mime, Prefer: prefer ?? (representation ? 'return=representation' : 'return=minimal') };
+async function api(path, { method = 'GET', token, key = anon, body, bytes, mime = 'application/json', representation = false, prefer, extraHeaders = {} } = {}) {
+  const headers = { apikey: key, 'Content-Type': mime, Prefer: prefer ?? (representation ? 'return=representation' : 'return=minimal'), ...extraHeaders };
   if (token) headers.Authorization = `Bearer ${token}`;
   const payload = bytes ?? (body === undefined ? undefined : JSON.stringify(body));
   const response = await fetch(`${base}/${path}`, { method, headers, body: payload });
@@ -34,6 +34,17 @@ async function api(path, { method = 'GET', token, key = anon, body, bytes, mime 
 const rpc = (name, token, body) => api(`rest/v1/rpc/${name}`, { method: 'POST', token, body });
 const ok = (r, label = 'request') => assert.ok(r.ok, `${label} expected 2xx, got ${r.status}`);
 const rejected = (r, label = 'request') => assert.ok(!r.ok, `${label} expected rejection, got ${r.status}`);
+// Per-step reporting for the add-only upload section: every step prints its own line with the HTTP status.
+const message = (r) => String(r.json?.message ?? r.json?.error ?? r.json?.msg ?? '').slice(0, 120);
+async function step(label, fn) {
+  let r;
+  try {
+    r = await fn();
+    passed++; console.log(`PASS: ${label} [HTTP ${r.status}${message(r) ? ` ${message(r)}` : ''}]`);
+  } catch (error) {
+    failed++; console.log(`FAIL: ${label} [${r ? `HTTP ${r.status}` : 'no response'}] :: ${String(error.message ?? error).split('\n')[0].slice(0, 300)}`);
+  }
+}
 const emptyRows = (r, label) => { ok(r, label); assert.deepEqual(r.json, [], `${label} expected no rows`); };
 
 const run = randomBytes(4).toString('hex');
@@ -289,6 +300,95 @@ await check('storage: delete is permission checked and removes the object', asyn
   const rec = await api(`rest/v1/records?id=eq.${attachmentID}`, { method: 'DELETE', token: T('survivor'), representation: true });
   ok(rec); assert.equal(rec.json.length, 1);
 });
+
+// ---------------------------------------------------------------- add-only attachment upload
+// attachments.add=true with attachments.read=false: the caregiver may contribute a file and its
+// record but must not be able to see, list or download anything. Storage RLS is checked by the
+// real storage-api, which also decides whether INSERT needs a SELECT policy (see backend/README.md).
+{
+  const addOnlyPath = uploadPath();
+  const overwrite = Buffer.concat([png, Buffer.from([0])]);
+  let addOnlyRecord;
+  await step('add-only: survivor grants caregiver attachments add=true (read stays false)', async () => {
+    const r = await permissionPatch('caregiver', 'attachments', { can_add: true, can_read: false });
+    ok(r, 'grant'); assert.equal(r.json.length, 1); assert.equal(r.json[0].can_add, true); assert.equal(r.json[0].can_read, false);
+    return r;
+  });
+  await step('add-only: caregiver POSTs the PNG without x-upsert (Storage RLS accepts add-only insert)', async () => {
+    const r = await upload('caregiver', addOnlyPath);
+    ok(r, 'add-only upload'); return r;
+  });
+  await step('add-only: caregiver inserts the attachment record with return=minimal', async () => {
+    const r = await newRecord('caregiver', 'attachments', 'Fictional add-only scan', { file_path: addOnlyPath, file_name: 'scan.png' });
+    ok(r, 'record insert'); assert.equal(r.status, 201); return r;
+  });
+  await step('add-only: return=representation on the record is refused because read is false', async () => {
+    const r = await newRecord('caregiver', 'attachments', 'Fictional needs RETURNING', { file_path: uploadPath(), file_name: 'x.png' }, true);
+    rejected(r, 'representation'); return r;
+  });
+  await step('add-only: caregiver cannot download the object they just uploaded', async () => {
+    const r = await download('caregiver', addOnlyPath); rejected(r, 'caregiver download'); return r;
+  });
+  await step('add-only: caregiver cannot list the circle folder (no entries returned)', async () => {
+    const r = await api('storage/v1/object/list/steady-fictional', { method: 'POST', token: T('caregiver'), body: { prefix: circle, limit: 100, offset: 0 } });
+    if (r.ok) { assert.ok(Array.isArray(r.json), 'list body is an array'); assert.equal(r.json.length, 0, 'list must be empty'); }
+    return r;
+  });
+  await step('add-only: caregiver cannot read the attachment record', async () => {
+    const r = await records('caregiver', '&kind=eq.attachments'); emptyRows(r, 'attachment records'); return r;
+  });
+  await step('add-only: caregiver cannot edit or delete the record or the object', async () => {
+    const edit = await api(`rest/v1/records?circle_id=eq.${circle}&kind=eq.attachments&file_path=eq.${addOnlyPath}`, { method: 'PATCH', token: T('caregiver'), body: { title: 'Hijack' }, representation: true });
+    assert.ok(!edit.ok || edit.json.length === 0, `record edit changed ${edit.json?.length} rows`);
+    const del = await api(`rest/v1/records?circle_id=eq.${circle}&kind=eq.attachments`, { method: 'DELETE', token: T('caregiver'), representation: true });
+    assert.ok(!del.ok || del.json.length === 0, 'record delete removed rows');
+    const obj = await api('storage/v1/object/steady-fictional', { method: 'DELETE', token: T('caregiver'), body: { prefixes: [addOnlyPath] } });
+    assert.ok(!obj.ok || (Array.isArray(obj.json) && obj.json.length === 0), 'object delete removed nothing');
+    return obj;
+  });
+  await step('add-only: survivor reads the record', async () => {
+    const r = await records('survivor', '&kind=eq.attachments'); ok(r, 'survivor records');
+    const row = r.json.find((x) => x.file_path === addOnlyPath);
+    assert.ok(row, 'record visible to survivor'); assert.equal(row.author_id, people.caregiver.id); addOnlyRecord = row; return r;
+  });
+  await step('add-only: survivor downloads the exact bytes', async () => {
+    const r = await download('survivor', addOnlyPath); ok(r, 'survivor download'); assert.ok(r.buffer.equals(png), 'bytes match'); return r;
+  });
+  await step('add-only: re-POST to the same path without x-upsert is a conflict (non-upsert)', async () => {
+    const r = await upload('caregiver', addOnlyPath, overwrite); rejected(r, 'duplicate'); return r;
+  });
+  await step('add-only: POST with x-upsert true is refused for the caregiver (no UPDATE policy)', async () => {
+    const r = await api(`storage/v1/object/steady-fictional/${addOnlyPath}`, { method: 'POST', token: T('caregiver'), bytes: overwrite, mime: 'image/png', extraHeaders: { 'x-upsert': 'true' } });
+    rejected(r, 'caregiver upsert'); return r;
+  });
+  await step('add-only: POST with x-upsert true is refused even for the survivor (objects are immutable)', async () => {
+    const r = await api(`storage/v1/object/steady-fictional/${addOnlyPath}`, { method: 'POST', token: T('survivor'), bytes: overwrite, mime: 'image/png', extraHeaders: { 'x-upsert': 'true' } });
+    rejected(r, 'survivor upsert'); return r;
+  });
+  await step('add-only: PUT (update object) is refused for caregiver and survivor', async () => {
+    const c = await api(`storage/v1/object/steady-fictional/${addOnlyPath}`, { method: 'PUT', token: T('caregiver'), bytes: overwrite, mime: 'image/png' });
+    rejected(c, 'caregiver PUT');
+    const r = await api(`storage/v1/object/steady-fictional/${addOnlyPath}`, { method: 'PUT', token: T('survivor'), bytes: overwrite, mime: 'image/png' });
+    rejected(r, 'survivor PUT'); return r;
+  });
+  await step('add-only: original bytes are unchanged after every overwrite attempt', async () => {
+    const r = await download('survivor', addOnlyPath); ok(r, 'survivor download'); assert.ok(r.buffer.equals(png), 'bytes still match'); return r;
+  });
+  await step('add-only: a path in another circle or a bad type is refused for the add-only caregiver', async () => {
+    rejected(await upload('caregiver', `${randomUUID()}/${randomUUID()}.png`), 'foreign circle');
+    const r = await upload('caregiver', uploadPath(), Buffer.from('hi'), 'text/plain'); rejected(r, 'bad mime'); return r;
+  });
+  await step('add-only: revoking attachments.add blocks the next caregiver upload', async () => {
+    ok(await permissionPatch('caregiver', 'attachments', { can_add: false }), 'revoke');
+    const r = await upload('caregiver', uploadPath()); rejected(r, 'upload after revoke'); return r;
+  });
+  await step('add-only: cleanup, survivor deletes the object and the record', async () => {
+    const o = await api('storage/v1/object/steady-fictional', { method: 'DELETE', token: T('survivor'), body: { prefixes: [addOnlyPath] } });
+    ok(o, 'object delete');
+    const r = await api(`rest/v1/records?id=eq.${addOnlyRecord.id}`, { method: 'DELETE', token: T('survivor'), representation: true });
+    ok(r, 'record delete'); assert.equal(r.json.length, 1); return r;
+  });
+}
 
 // ---------------------------------------------------------------- check-ins and device tokens
 let generalCheckIn;
