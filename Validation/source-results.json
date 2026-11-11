@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "checks": 40,
+  "checks": 41,
   "details": [
     "Unique Xcode object identifiers",
     "All Xcode object references resolve",
@@ -24,6 +24,7 @@
     "Valid asset manifest: Assets.xcassets",
     "Valid asset manifest: AccentColor.colorset",
     "Valid asset manifest: AppIcon.appiconset",
+    "Valid asset manifest: SecondaryText.colorset",
     "No top-level bundle folder reference is named Resources (breaks iOS codesign/install)",
     "No Steady/Resources directory",
     "Only public client config keys in template",
