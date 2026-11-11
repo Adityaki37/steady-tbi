@@ -34,10 +34,10 @@ struct AccountView: View {
                         checkInSection
                     }
                 }
-                Section("Fictional-data prototype") {
+                Section(secondary: "Fictional-data prototype") {
                     Text("Use fictional records only. Account mode syncs with the configured backend. Local demo data is separate and is never uploaded automatically.")
-                    Text("Check-ins sync in the app while open (every 15 seconds or on refresh), which remains the fallback. A caregiver can also send an \u{201C}I noticed a possible symptom\u{201D} prompt. Live cross-device Apple push requires a paid Apple Developer account and configured APNs; the entitlement is set for development only.").font(.footnote).foregroundStyle(.secondary)
-                    Text("After a network error, shared history is cleared until a successful refresh. Previously viewed or exported information cannot be taken back by revocation.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Check-ins sync in the app while open (every 15 seconds or on refresh), which remains the fallback. A caregiver can also send an \u{201C}I noticed a possible symptom\u{201D} prompt. Live cross-device Apple push requires a paid Apple Developer account and configured APNs; the entitlement is set for development only.").font(.footnote).foregroundStyle(Palette.secondaryText)
+                    Text("After a network error, shared history is cleared until a successful refresh. Previously viewed or exported information cannot be taken back by revocation.").font(.footnote).foregroundStyle(Palette.secondaryText)
                 }
             }.navigationTitle("Separate accounts").navigationBarTitleDisplayMode(.inline)
                 .refreshable { await perform { try await client.loadCircles() } }
@@ -78,7 +78,7 @@ struct AccountView: View {
         }
     }
     private var setupSection: some View {
-        Section("Backend setup is pending") {
+        Section(secondary: "Backend setup is pending") {
             Label("The local demo works now", systemImage: "checkmark.circle")
             Text("A new Supabase project must be configured before separate devices can share fictional data. No hosted database was provisioned with this source project.")
             Text("On your Mac, follow backend/README.md. Copy SteadyResources/Backend.example.plist to Backend.local.plist and enter the project URL and publishable key, then rebuild.")
@@ -95,7 +95,7 @@ struct AccountView: View {
                     password = ""
                 }
             }.disabled(busy || email.isEmpty || password.isEmpty)
-            Text("Confirm the email if requested, then sign in. Use separate test accounts for each person. Passwords are not stored by this app; session tokens are stored in iOS Keychain.").font(.footnote).foregroundStyle(.secondary)
+            Text("Confirm the email if requested, then sign in. Use separate test accounts for each person. Passwords are not stored by this app; session tokens are stored in iOS Keychain.").font(.footnote).foregroundStyle(Palette.secondaryText)
         }
     }
     private var accountSection: some View {
@@ -109,7 +109,7 @@ struct AccountView: View {
         }
     }
     private var circlesSection: some View {
-        Section("Fictional circles") {
+        Section(secondary: "Fictional circles") {
             if !client.circles.isEmpty {
                 Picker("Circle", selection: Binding(get: { client.circleID }, set: { value in
                     preview = nil; invitationToken = ""; client.clearVisibleData(); client.circleID = value
@@ -127,7 +127,7 @@ struct AccountView: View {
         }
     }
     private var journalSection: some View {
-        Section("Shared journal") {
+        Section(secondary: "Shared journal") {
             Picker("Type", selection: $kind) { ForEach(RecordKind.allCases) { Text($0.title).tag($0) } }
             if client.can(kind, .add) {
                 Button(kind == .attachments ? "Import a fictional file" : "Add fictional entry") { if kind == .attachments { importing = true } else { editor = true } }.disabled(busy)
@@ -136,23 +136,23 @@ struct AccountView: View {
                         guard let url = Bundle.main.url(forResource: "Fictional-brain-MRI", withExtension: "png", subdirectory: "SteadyResources") else { return }
                         Task { await perform { try await client.upload(url) } }
                     }.disabled(busy)
-                    Text("Clearly labeled fictional illustration, not a real patient scan. Steady does not diagnose or interpret imaging. The survivor controls who may add files; any member the survivor authorizes (including a clinician) can upload one here.").font(.caption).foregroundStyle(.secondary)
+                    Text("Clearly labeled fictional illustration, not a real patient scan. Steady does not diagnose or interpret imaging. The survivor controls who may add files; any member the survivor authorizes (including a clinician) can upload one here.").font(.caption).foregroundStyle(Palette.secondaryText)
                 }
             } else if kind == .attachments, client.role == "clinician" {
-                Text("To upload a fictional MRI, ask the survivor to grant Files → Add for the clinician role. The survivor controls access; uploads stay disabled until they turn it on.").font(.caption).foregroundStyle(.secondary)
+                Text("To upload a fictional MRI, ask the survivor to grant Files → Add for the clinician role. The survivor controls access; uploads stay disabled until they turn it on.").font(.caption).foregroundStyle(Palette.secondaryText)
             }
             if !client.can(kind, .read) {
                 Label("History is private", systemImage: "lock.shield")
                 Text(client.can(kind, .add) ? "You can add an entry without reading this history." : "The survivor has not granted access to this history.")
             } else {
                 let entries = client.records.filter { $0.kind == kind.rawValue }
-                if entries.isEmpty { Text("No shared entries yet. Add a fictional example.").foregroundStyle(.secondary) }
+                if entries.isEmpty { Text("No shared entries yet. Add a fictional example.").foregroundStyle(Palette.secondaryText) }
                 ForEach(entries) { record in
                     VStack(alignment: .leading, spacing: 10) {
                         Text(record.title).font(.headline)
                         if let severity = record.severity { Text("Self-reported intensity \(severity) of 5").font(.subheadline) }
                         Text(record.body)
-                        Text(record.created_at).font(.caption).foregroundStyle(.secondary)
+                        Text(record.created_at).font(.caption).foregroundStyle(Palette.secondaryText)
                         if record.file_path != nil {
                             Button("Preview fictional file") { Task { await perform { preview = FilePreview(url: try await client.preview(record)) } } }.disabled(busy)
                         }
@@ -162,12 +162,12 @@ struct AccountView: View {
                         }.buttonStyle(.borderless)
                     }.padding(.vertical, 8)
                 }
-                Text("Showing up to 200 most recent shared records. This demo does not paginate older records.").font(.caption).foregroundStyle(.secondary)
+                Text("Showing up to 200 most recent shared records. This demo does not paginate older records.").font(.caption).foregroundStyle(Palette.secondaryText)
             }
         }
     }
     private var accessSection: some View {
-        Section("Survivor access control") {
+        Section(secondary: "Survivor access control") {
             Text("Read/add/edit/delete apply per role and entry type. Edit/delete also require read. Changes are enforced by server policies on the next request.").font(.footnote)
             ForEach(client.grants) { grant in
                 DisclosureGroup("\(grant.role.capitalized) · \(RecordKind(rawValue: grant.kind)?.title ?? grant.kind)") {
@@ -180,7 +180,7 @@ struct AccountView: View {
         }
     }
     private var invitationsSection: some View {
-        Section("Invite a test caregiver or clinician") {
+        Section(secondary: "Invite a test caregiver or clinician") {
             TextField("Recipient account email", text: $inviteEmail).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
             Picker("Invite role", selection: $inviteRole) { Text("Caregiver").tag("caregiver"); Text("Clinician").tag("clinician") }
             Button("Create one-time invitation") { Task { await perform { invitationToken = try await client.invite(email: inviteEmail, role: inviteRole) } } }.disabled(busy || inviteEmail.isEmpty)
@@ -196,11 +196,11 @@ struct AccountView: View {
                     Button("Revoke invitation", role: .destructive) { Task { await perform { try await client.revoke(invitation.id) } } }.disabled(busy)
                 }
             }
-            Text("No invitation email is sent automatically.").font(.caption).foregroundStyle(.secondary)
+            Text("No invitation email is sent automatically.").font(.caption).foregroundStyle(Palette.secondaryText)
         }
     }
     private var membersSection: some View {
-        Section("Connected test accounts") {
+        Section(secondary: "Connected test accounts") {
             ForEach(client.members) { member in
                 VStack(alignment: .leading) {
                     Text(member.role.capitalized)
@@ -211,11 +211,11 @@ struct AccountView: View {
         }
     }
     private var checkInSection: some View {
-        Section("Check-ins") {
+        Section(secondary: "Check-ins") {
             if client.role == "caregiver" {
                 Button("Suggest a survivor check-in") { Task { await perform { try await client.checkIn() } } }.disabled(busy)
                 Button("I noticed a possible symptom - suggest a break") { Task { await perform { try await client.requestSymptomBreak() } } }.disabled(busy)
-                Text("This is a supportive prompt from you, not a diagnosis and not a prediction of overload. Live cross-device push needs a paid Apple Developer account and configured APNs; until then the survivor sees it on the next foreground refresh, and in local demo mode via a same-device notification.").font(.footnote).foregroundStyle(.secondary)
+                Text("This is a supportive prompt from you, not a diagnosis and not a prediction of overload. Live cross-device push needs a paid Apple Developer account and configured APNs; until then the survivor sees it on the next foreground refresh, and in local demo mode via a same-device notification.").font(.footnote).foregroundStyle(Palette.secondaryText)
             }
             ForEach(client.checkIns) { checkIn in
                 Text(checkIn.body)

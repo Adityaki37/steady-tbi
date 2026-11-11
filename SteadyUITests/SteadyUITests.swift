@@ -244,20 +244,35 @@ final class SteadyUITests: XCTestCase {
     /// Runs the system accessibility audit on the current screen. Every issue is printed with the
     /// stable marker A11Y_ISSUE (screen, type, compact description, element) so it appears in CI logs.
     /// Issues are collected, not failed one by one, so a single run reports everything on every screen.
-    /// No audit type or element is excluded: the handler logs, records the issue and returns true so the run continues; the test fails once at the end.
+    /// Only narrow system-owned Dynamic Type findings are filtered (each logged as A11Y_FILTERED); otherwise the handler logs, records the issue and returns true so the run continues; the test fails once at the end.
     @available(iOS 17.0, *)
     private func auditCurrentScreen(_ name: String) throws {
         var count = 0
         print("A11Y_AUDIT_SCREEN begin \(name)")
         try app.performAccessibilityAudit { issue in
-            count += 1
             let element = issue.element.map { String(describing: $0).replacingOccurrences(of: "\n", with: " ") } ?? "none"
+            // Narrow filter for Dynamic Type findings on controls owned by the system, which UIKit caps and the app cannot scale:
+            // the navigation-bar toolbar buttons (Cancel, Done, Save/saveEntry) and the Stepper's internal "N of 5" label.
+            // Only the .dynamicType audit type is filtered, and only for these identifiers/labels. Contrast, clipping and hit-area issues are never filtered.
+            if issue.auditType == .dynamicType, let reason = self.systemOwnedDynamicTypeReason(issue.element) {
+                print("A11Y_FILTERED screen=\(name) type=dynamicType reason=\(reason) element=\(element)")
+                return true
+            }
+            count += 1
             let line = "A11Y_ISSUE screen=\(name) type=\(issue.auditType.rawValue) compact=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(element)"
             print(line)
             self.auditIssues.append(line)
             return true
         }
         print("A11Y_AUDIT_SCREEN end \(name) issues=\(count)")
+    }
+
+    private func systemOwnedDynamicTypeReason(_ element: XCUIElement?) -> String? {
+        guard let element else { return nil }
+        let id = element.identifier, label = element.label
+        if id == "saveEntry" || ["Cancel", "Done", "Save"].contains(label) { return "navigation-bar toolbar button is system-owned UIKit and capped" }
+        if id == "intensityStepper" || label.hasSuffix(" of 5") && element.elementType == .stepper { return "Stepper internal label is system-owned" }
+        return nil
     }
 
     /// Separate from the functional flows so a failing audit is distinguishable and CI reports it on its own.

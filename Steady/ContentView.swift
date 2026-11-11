@@ -3,27 +3,49 @@ import SteadyCore
 import UniformTypeIdentifiers
 import PDFKit
 
-private enum Palette {
+enum Palette {
     static let background = Color(uiColor: .systemGroupedBackground)
     static let surface = Color(uiColor: .secondarySystemGroupedBackground)
+    // Accessible secondary text (>= 7:1 on both grouped surfaces, light and dark). Replaces .secondary.
+    static let secondaryText = Color("SecondaryText")
+}
+
+struct SectionHeader: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+    var body: some View {
+        Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+extension Section where Parent == SectionHeader, Content: View, Footer == EmptyView {
+    /// Section with a header in the accessible secondary color (the default header uses low-contrast .secondary).
+    init(secondary title: String, @ViewBuilder content: () -> Content) {
+        self.init(content: content, header: { SectionHeader(title) })
+    }
 }
 
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
     @State private var accounts = false
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Label("Steady", systemImage: "leaf").font(.title2.bold())
-                    Spacer()
-                    Text("FICTIONAL DEMO").font(.caption.bold()).foregroundStyle(.secondary)
+                // The header is outside any ScrollView, so every piece of text wraps instead of truncating,
+                // and at accessibility sizes the brand and demo label stack vertically.
+                let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+                layout {
+                    Label("Steady", systemImage: "leaf").font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+                    if !typeSize.isAccessibilitySize { Spacer() }
+                    Text("FICTIONAL DEMO").font(.caption.bold()).foregroundStyle(Palette.secondaryText).fixedSize(horizontal: false, vertical: true)
                 }
-                Toggle("Separate accounts (configured backend)", isOn: $accounts).font(.subheadline)
+                Toggle("Separate accounts (configured backend)", isOn: $accounts).font(.subheadline).fixedSize(horizontal: false, vertical: true)
                 if !accounts { Picker("Demo role", selection: $store.role) {
                     ForEach(DemoRole.allCases) { Text($0.title).tag($0) }
                 }.pickerStyle(.segmented).accessibilityIdentifier("rolePicker").accessibilityHint("Switches a fictional role on this device. This is not authentication.") }
-                Text(accounts ? "Account roles are assigned by survivor invitations" : "One device · role switcher, not secure sign-in").font(.caption).foregroundStyle(.secondary)
+                Text(accounts ? "Account roles are assigned by survivor invitations" : "One device · role switcher, not secure sign-in").font(.caption).foregroundStyle(Palette.secondaryText).fixedSize(horizontal: false, vertical: true)
             }.padding().background(Palette.surface)
             if accounts {
                 AccountView()
@@ -79,14 +101,14 @@ struct HomeView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityAddTraits(.isHeader)
-                Text("Notice how you feel and leave a useful note for your circle.").foregroundStyle(.secondary)
+                Text("Notice how you feel and leave a useful note for your circle.").foregroundStyle(Palette.secondaryText)
                 Card {
                     Label("\(store.role.title) view", systemImage: store.role.contribution.symbol).font(.headline)
                     Text(roleDescription)
                     if store.can(store.role.contribution, .add) {
                         Button(store.role == .survivor ? "Log a symptom" : store.role == .caregiver ? "Add an observation" : "Add a clinician note") { editor = true }
                             .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("primaryAddButton")
-                    } else { Label("Adding is off for this role", systemImage: "lock").foregroundStyle(.secondary) }
+                    } else { Label("Adding is off for this role", systemImage: "lock").foregroundStyle(Palette.secondaryText) }
                 }
                 if store.role == .survivor, let message = store.checkIn() {
                     Card {
@@ -100,17 +122,17 @@ struct HomeView: View {
                         Label("Suggest a check-in", systemImage: "bell").font(.headline)
                         Text("Leave a gentle prompt for the survivor on this device.")
                         Toggle("Also show a local notification", isOn: $notify)
-                        Text("Optional, five seconds from now. Same iPhone only; no remote push.").font(.caption).foregroundStyle(.secondary)
+                        Text("Optional, five seconds from now. Same iPhone only; no remote push.").font(.caption).foregroundStyle(Palette.secondaryText)
                         Button(sending ? "Saving…" : "Suggest a check-in") {
                             sending = true
                             Task { await store.requestCheckIn(withNotification: notify); sending = false }
-                        }.buttonStyle(.bordered).disabled(sending)
+                        }.buttonStyle(PrimaryButtonStyle()).disabled(sending)
                         Divider()
                         Text("Noticed a possible symptom? Send a supportive prompt to consider taking a break. This is not a diagnosis and does not predict overload.").font(.subheadline)
                         Button(sending ? "Saving…" : "Suggest taking a break") {
                             sending = true
                             Task { await store.requestCheckIn(withNotification: notify, symptomBreak: true); sending = false }
-                        }.buttonStyle(.bordered).disabled(sending)
+                        }.buttonStyle(PrimaryButtonStyle()).disabled(sending)
                     }
                 }
                 Card {
@@ -118,7 +140,7 @@ struct HomeView: View {
                     Text("The survivor controls history access and contributions separately. A caregiver can add observations without seeing symptom history.")
                 }
                 Text("All sample entries are fictional. Steady helps record experiences; it does not predict overload, interpret scans, or provide diagnosis or treatment.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(Palette.secondaryText)
             }.padding(20)
         }.background(Palette.background).navigationTitle("Today").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $editor) { EditorView(kind: store.role.contribution, existing: nil) }
@@ -143,7 +165,7 @@ struct JournalView: View {
                 Picker("Entry type", selection: $kind) {
                     ForEach(RecordKind.allCases.filter { $0 != .attachments }) { Text($0.title).tag($0) }
                 }.pickerStyle(.menu).accessibilityIdentifier("entryTypePicker")
-                if store.can(kind, .add) { Button { editor = true } label: { Label("Add entry", systemImage: "plus.circle.fill") } }
+                if store.can(kind, .add) { Button { editor = true } label: { Label("Add entry", systemImage: "plus.circle.fill").fixedSize(horizontal: false, vertical: true) } }
             }
             if !store.can(kind, .read) {
                 Section {
@@ -151,9 +173,9 @@ struct JournalView: View {
                     Text(store.can(kind, .add) ? "You can contribute an entry, but this role cannot read this history." : "The survivor has not shared this history with this role.")
                 }
             } else if entries.isEmpty {
-                Section { Text("No entries here yet. A short note is a useful start.").foregroundStyle(.secondary) }
+                Section { Text("No entries here yet. A short note is a useful start.").foregroundStyle(Palette.secondaryText) }
             } else {
-                Section("Fictional demo entries") {
+                Section(secondary: "Fictional demo entries") {
                     ForEach(entries) { record in
                         NavigationLink { RecordDetailView(recordID: record.id, kind: kind) } label: { RecordRow(record: record) }
                     }
@@ -166,13 +188,14 @@ struct JournalView: View {
 }
 
 private struct RecordRow: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let record: DemoRecord
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(record.title).font(.headline)
-            if let severity = record.severity { Text("Intensity \(severity) of 5").font(.subheadline).foregroundStyle(.secondary) }
-            Text(record.body).font(.subheadline).lineLimit(2).foregroundStyle(.secondary)
-            Text("\(record.author.title) · \(record.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
+            if let severity = record.severity { Text("Intensity \(severity) of 5").font(.subheadline).foregroundStyle(Palette.secondaryText) }
+            Text(record.body).font(.subheadline).lineLimit(typeSize.isAccessibilitySize ? 6 : 2).fixedSize(horizontal: false, vertical: true).foregroundStyle(Palette.secondaryText)
+            Text("\(record.author.title) · \(record.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(Palette.secondaryText)
         }.padding(.vertical, 6).accessibilityElement(children: .combine)
     }
 }
@@ -198,7 +221,7 @@ struct RecordDetailView: View {
                         if let severity = record.severity { Text("Intensity: \(severity) of 5 (self-reported)") }
                         Text(record.body).textSelection(.enabled)
                     }
-                    Section("Entry details") {
+                    Section(secondary: "Entry details") {
                         LabeledContent("Author", value: record.author.title)
                         LabeledContent("Added", value: record.createdAt.formatted())
                         LabeledContent("Updated", value: record.updatedAt.formatted())
@@ -237,18 +260,18 @@ struct EditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Fictional \(kind.title.lowercased()) entry") {
+                Section(secondary: "Fictional \(kind.title.lowercased()) entry") {
                     TextField("Short title", text: $title).accessibilityLabel("Entry title").accessibilityIdentifier("entryTitle")
                     TextField("What did you notice?", text: $bodyText, axis: .vertical).lineLimit(4...10).accessibilityIdentifier("entryBody")
-                    Text("\(title.count)/100 title · \(bodyText.count)/3,000 note").font(.caption).foregroundStyle(.secondary)
+                    Text("\(title.count)/100 title · \(bodyText.count)/3,000 note").font(.caption).foregroundStyle(Palette.secondaryText)
                 }
                 if kind == .symptoms {
-                    Section("Self-reported intensity") {
+                    Section(secondary: "Self-reported intensity") {
                         Stepper("\(severity) of 5", value: $severity, in: 1...5).accessibilityIdentifier("intensityStepper")
-                        Text("1 = mild · 5 = intense. This is a personal description, not a medical score.").font(.footnote).foregroundStyle(.secondary)
+                        Text("1 = mild · 5 = intense. This is a personal description, not a medical score.").font(.footnote).foregroundStyle(Palette.secondaryText)
                     }
                 }
-                Section { Text("Use made-up examples only. Entries stay in this app on this device.").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Use made-up examples only. Entries stay in this app on this device.").font(.footnote).foregroundStyle(Palette.secondaryText) }
                 if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red).accessibilityAddTraits(.isStaticText) } }
             }.navigationTitle(existing == nil ? "Add entry" : "Edit entry").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -266,6 +289,7 @@ struct EditorView: View {
 
 struct FilesView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var importing = false
     @State private var preview: FilePreview?
     @State private var editing: DemoRecord?
@@ -276,22 +300,24 @@ struct FilesView: View {
             Section {
                 Text("Fictional attachments only").font(.headline)
                 Text("Preview a sample brain MRI illustration or import a made-up PDF, PNG or JPEG (up to 15 MB). No scan analysis or diagnostic interpretation.").font(.subheadline)
-                if store.can(.attachments, .add) { Button { importing = true } label: { Label("Import a fictional file", systemImage: "plus.circle") }.accessibilityIdentifier("importFile") }
+                if store.can(.attachments, .add) { Button { importing = true } label: { Label("Import a fictional file", systemImage: "plus.circle").fixedSize(horizontal: false, vertical: true) }.accessibilityIdentifier("importFile") }
             }
             if !store.can(.attachments, .read) {
                 Section { Label("Files are private to this role", systemImage: "lock"); Text("Importing, if enabled, does not grant access to existing files.") }
             } else if files.isEmpty {
                 Section { Text("No files yet. Import a fictional example to try preview.") }
             } else {
-                Section("On this device") {
+                Section(secondary: "On this device") {
                     ForEach(files) { file in
                         VStack(alignment: .leading, spacing: 10) {
                             RecordRow(record: file)
                             Button("Preview file") { do { preview = FilePreview(url: try store.preview(file.id)) } catch { store.report(error) } }.accessibilityIdentifier("previewFile")
-                            HStack(spacing: 20) {
-                                if store.can(.attachments, .edit) { Button("Edit details") { editing = file } }
-                                if store.can(.attachments, .delete) { Button("Delete", role: .destructive) { deleting = file } }
-                            }.font(.subheadline)
+                            // Row actions: body-size text, at least 44x44 pt hit area, spaced apart; stacked at accessibility sizes.
+                            let actions = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 24))
+                            actions {
+                                if store.can(.attachments, .edit) { Button("Edit details") { editing = file }.frame(minWidth: 44, minHeight: 44, alignment: .leading).contentShape(Rectangle()) }
+                                if store.can(.attachments, .delete) { Button("Delete", role: .destructive) { deleting = file }.frame(minWidth: 44, minHeight: 44, alignment: .leading).contentShape(Rectangle()) }
+                            }.font(.body)
                         }.padding(.vertical, 5).buttonStyle(.borderless)
                     }
                 }
@@ -333,7 +359,7 @@ struct FilePreviewView: View {
             VStack(spacing: 12) {
                 ZoomableImage(image: image)
                 Text("Fictional illustration. Not a patient scan and not interpreted by Steady.")
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal)
+                    .font(.footnote).foregroundStyle(Palette.secondaryText).multilineTextAlignment(.center).padding(.horizontal)
             }.padding(.bottom)
         } else {
             VStack(spacing: 8) {
@@ -395,16 +421,16 @@ struct SharingView: View {
                         }
                     }
                 }
-                Section("Start again") {
+                Section(secondary: "Start again") {
                     Button("Reset fictional demo", role: .destructive) { reset = true }.accessibilityIdentifier("resetDemo")
-                    Text("Restores example entries and default permissions, removes imported files, and clears the local check-in and notification.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Restores example entries and default permissions, removes imported files, and clears the local check-in and notification.").font(.footnote).foregroundStyle(Palette.secondaryText)
                 }
             } else {
                 Section { Label("Only the survivor can change access", systemImage: "lock.shield"); Text("Switch to Survivor to explore permission settings in this single-device demo.") }
             }
-            Section("About this demo") {
+            Section(secondary: "About this demo") {
                 Text("No accounts, backend, sensor prediction, real patient data, or cross-device messaging. This switcher demonstrates permissions; it does not authenticate anyone who holds the phone.")
-                Text("Data is saved locally with iOS file protection and excluded from app backup. This is a prototype, not a production medical record or privacy system.").font(.footnote).foregroundStyle(.secondary)
+                Text("Data is saved locally with iOS file protection and excluded from app backup. This is a prototype, not a production medical record or privacy system.").font(.footnote).foregroundStyle(Palette.secondaryText)
             }
         }.navigationTitle("Your control")
             .confirmationDialog("Reset all demo data on this device?", isPresented: $reset, titleVisibility: .visible) {
