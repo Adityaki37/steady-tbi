@@ -244,7 +244,7 @@ final class SteadyUITests: XCTestCase {
     /// Runs the system accessibility audit on the current screen. Every issue is printed with the
     /// stable marker A11Y_ISSUE (screen, type, compact description, element) so it appears in CI logs.
     /// Issues are collected, not failed one by one, so a single run reports everything on every screen.
-    /// No audit type or element is excluded: the handler only logs and returns false (issue is kept).
+    /// No audit type or element is excluded: the handler logs, records the issue and returns true so the run continues; the test fails once at the end.
     @available(iOS 17.0, *)
     private func auditCurrentScreen(_ name: String) throws {
         var count = 0
@@ -255,7 +255,7 @@ final class SteadyUITests: XCTestCase {
             let line = "A11Y_ISSUE screen=\(name) type=\(issue.auditType.rawValue) compact=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(element)"
             print(line)
             self.auditIssues.append(line)
-            return false
+            return true
         }
         print("A11Y_AUDIT_SCREEN end \(name) issues=\(count)")
     }
@@ -300,7 +300,9 @@ final class SteadyUITests: XCTestCase {
         try auditCurrentScreen("today-caregiver")
 
         print("A11Y_AUDIT_TOTAL issues=\(auditIssues.count)")
-        XCTAssertTrue(auditIssues.isEmpty, "Accessibility audit found \(auditIssues.count) issue(s); see A11Y_ISSUE lines in the log")
+        if !auditIssues.isEmpty {
+            XCTFail("Accessibility audit found \(auditIssues.count) issue(s):\n" + auditIssues.joined(separator: "\n"))
+        }
     }
 
     private func waitForDisappearance(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {

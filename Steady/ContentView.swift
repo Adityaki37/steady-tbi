@@ -71,7 +71,14 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("A little awareness.\nAt your pace.").font(.largeTitle.bold()).fixedSize(horizontal: false, vertical: true)
+                Text("A little awareness. At your pace.")
+                    .font(.largeTitle.bold())
+                    .lineLimit(nil)
+                    .multilineTextAlignment(.leading)
+                    .minimumScaleFactor(0.6)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
                 Text("Notice how you feel and leave a useful note for your circle.").foregroundStyle(.secondary)
                 Card {
                     Label("\(store.role.title) view", systemImage: store.role.contribution.symbol).font(.headline)
@@ -184,6 +191,10 @@ struct RecordDetailView: View {
                 List {
                     Section {
                         Text(record.title).font(.title2.bold())
+                            .lineLimit(nil).minimumScaleFactor(0.6)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityAddTraits(.isHeader)
                         if let severity = record.severity { Text("Intensity: \(severity) of 5 (self-reported)") }
                         Text(record.body).textSelection(.enabled)
                     }
@@ -415,6 +426,7 @@ struct RecoveryView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Label("Saved demo needs attention", systemImage: "externaldrive.badge.exclamationmark").font(.title2.bold())
+                    .minimumScaleFactor(0.6).fixedSize(horizontal: false, vertical: true)
                 Text(message)
                 Text("Your saved file has not been silently replaced. Resetting discards it and restores fictional examples.")
                 if store.role == .survivor { Button("Reset fictional demo", role: .destructive) { confirm = true }.buttonStyle(.bordered) }
