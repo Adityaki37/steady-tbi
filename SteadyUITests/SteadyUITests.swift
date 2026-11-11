@@ -237,6 +237,72 @@ final class SteadyUITests: XCTestCase {
         shot("15-today-accessibility-xl")
     }
 
+    // MARK: Accessibility audit
+
+    private var auditIssues: [String] = []
+
+    /// Runs the system accessibility audit on the current screen. Every issue is printed with the
+    /// stable marker A11Y_ISSUE (screen, type, compact description, element) so it appears in CI logs.
+    /// Issues are collected, not failed one by one, so a single run reports everything on every screen.
+    /// No audit type or element is excluded: the handler only logs and returns false (issue is kept).
+    @available(iOS 17.0, *)
+    private func auditCurrentScreen(_ name: String) throws {
+        var count = 0
+        print("A11Y_AUDIT_SCREEN begin \(name)")
+        try app.performAccessibilityAudit { issue in
+            count += 1
+            let element = issue.element.map { String(describing: $0).replacingOccurrences(of: "\n", with: " ") } ?? "none"
+            let line = "A11Y_ISSUE screen=\(name) type=\(issue.auditType.rawValue) compact=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(element)"
+            print(line)
+            self.auditIssues.append(line)
+            return false
+        }
+        print("A11Y_AUDIT_SCREEN end \(name) issues=\(count)")
+    }
+
+    /// Separate from the functional flows so a failing audit is distinguishable and CI reports it on its own.
+    func testAccessibilityAudit() throws {
+        guard #available(iOS 17.0, *) else { throw XCTSkip("performAccessibilityAudit needs iOS 17 or later") }
+        launch()
+        try auditCurrentScreen("today-survivor")
+
+        // Editor sheet (survivor, symptoms).
+        app.buttons["primaryAddButton"].tap()
+        XCTAssertTrue(app.textFields["entryTitle"].waitForExistence(timeout: 10), "Editor did not open")
+        try auditCurrentScreen("editor-sheet")
+        let cancel = app.buttons["Cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.tap()
+        XCTAssertTrue(app.buttons["primaryAddButton"].waitForExistence(timeout: 10), "Editor did not close")
+
+        openTab("Journal")
+        XCTAssertTrue(element(containing: "Noise felt tiring").waitForExistence(timeout: 10), "Journal seed entry missing")
+        try auditCurrentScreen("journal")
+
+        openTab("Files")
+        let preview = app.buttons["previewFile"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 10), "Sample MRI row missing")
+        try auditCurrentScreen("files")
+        preview.tap()
+        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForExistence(timeout: 15), "Preview sheet did not appear")
+        XCTAssertTrue(app.images["filePreviewImage"].waitForExistence(timeout: 10), "Preview image did not render")
+        try auditCurrentScreen("file-preview")
+        app.navigationBars["Fictional file preview"].buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForNonExistence(timeout: 10), "Preview sheet did not close")
+
+        openTab("Control")
+        XCTAssertTrue(app.staticTexts["The survivor stays in control"].waitForExistence(timeout: 10))
+        try auditCurrentScreen("control")
+
+        openTab("Today")
+        switchRole("Caregiver")
+        XCTAssertTrue(app.buttons["Suggest a check-in"].waitForExistence(timeout: 10), "Caregiver Today did not appear")
+        try auditCurrentScreen("today-caregiver")
+
+        print("A11Y_AUDIT_TOTAL issues=\(auditIssues.count)")
+        XCTAssertTrue(auditIssues.isEmpty, "Accessibility audit found \(auditIssues.count) issue(s); see A11Y_ISSUE lines in the log")
+    }
+
     private func waitForDisappearance(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed

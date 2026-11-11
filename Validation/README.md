@@ -14,6 +14,8 @@ Prepared on **DESKTOP-5MIQVIT / Windows 10.0.26300**. No Xcode or Swift executab
 | Xcode simulator build / visual screenshots | **NOT RUN** | Requires compatible Mac/Xcode |
 | Free Personal Team signing / iPhone run | **NOT RUN** | Requires user’s Mac, Apple sign-in and connected iPhone |
 | Simulator UI tests (`SteadyUITests`, local demo mode) | **CI-configured, not run here** | `ios-build.yml` on macos-15; confirm in the Actions run log |
+| Simulator accessibility audit (`testAccessibilityAudit`, `performAccessibilityAudit`) | **CI-configured, not run here** | `ios-build.yml` on macos-15; results in log markers `A11Y_ISSUE` and `A11Y_TEST_EXIT` |
+| `scripts/run-on-mac.sh` (simulator build, install, launch) | **CI-configured, not run here** | `ios-build.yml` on macos-15; result in log marker `RUN_ON_MAC_EXIT`. On Linux it only exits 0 with a message |
 | Live local Supabase HTTP flow (`test-tools/live-stack.e2e.mjs`) | **CI-configured, not run here** | `live-supabase.yml` on ubuntu-latest with Docker; tests the HTTP contract, not the iOS app |
 | iOS app against a live backend / hosted Supabase project | **NOT RUN** | Requires an explicitly chosen new test backend |
 | Remote APNs push delivery | **NOT RUN** | Needs a paid Apple Developer account, APNs key and a real device |

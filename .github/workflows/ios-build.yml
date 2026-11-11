@@ -59,12 +59,46 @@ jobs:
           xcodebuild -project Steady.xcodeproj -scheme Steady \
             -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedDataUITest \
             -resultBundlePath UITests.xcresult -only-testing:SteadyUITests \
+            -skip-testing:SteadyUITests/SteadyUITests/testAccessibilityAudit \
             CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test > uitest.log 2>&1 || rc=$?
           echo "=== UI_TESTS_SUMMARY (full log, filtered) ==="
           grep -E "error: |XCTAssert|failed \(|Test Case .*(passed|failed)|Executed [0-9]+ test|TEST (SUCCEEDED|FAILED)" uitest.log || true
           echo "=== UI_TESTS_TAIL ==="
           tail -40 uitest.log
           echo "UI_TESTS_EXIT=$rc"
+          exit $rc
+      - name: Accessibility audit (XCUITest performAccessibilityAudit)
+        id: a11y
+        if: success() || failure()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          rm -rf A11yAudit.xcresult
+          DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9A-Za-z ]+ \(' | sed 's/ ($//')
+          echo "Using simulator: $DEVICE"
+          rc=0
+          xcodebuild -project Steady.xcodeproj -scheme Steady \
+            -destination "platform=iOS Simulator,name=$DEVICE" -derivedDataPath DerivedDataUITest \
+            -resultBundlePath A11yAudit.xcresult \
+            -only-testing:SteadyUITests/SteadyUITests/testAccessibilityAudit \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= test > a11y.log 2>&1 || rc=$?
+          echo "=== A11Y_AUDIT_REPORT (full log, filtered) ==="
+          grep -E "A11Y_AUDIT_SCREEN|A11Y_ISSUE|A11Y_AUDIT_TOTAL" a11y.log || echo "A11Y: no audit markers found"
+          echo "=== A11Y_TESTS_SUMMARY ==="
+          grep -E "error: |XCTAssert|failed \(|Test Case .*(passed|failed|skipped)|Executed [0-9]+ test|TEST (SUCCEEDED|FAILED)" a11y.log || true
+          echo "=== A11Y_TAIL ==="
+          tail -30 a11y.log
+          echo "A11Y_TEST_EXIT=$rc"
+          exit $rc
+      - name: Run on simulator helper (scripts/run-on-mac.sh)
+        id: runonmac
+        if: success() || failure()
+        continue-on-error: true
+        run: |
+          rc=0
+          sh scripts/run-on-mac.sh > run-on-mac.log 2>&1 || rc=$?
+          tail -60 run-on-mac.log
+          echo "RUN_ON_MAC_EXIT=$rc"
           exit $rc
       - name: Export and print UI test screenshots
         if: always()
@@ -130,6 +164,8 @@ jobs:
             test.log
             UITests.xcresult
             uitest.log
+            a11y.log
+            run-on-mac.log
       - name: Launch in simulator and capture screenshots
         if: success() || failure()
         continue-on-error: true
@@ -186,3 +222,9 @@ jobs:
         run: |
           echo "UI tests failed; see ui-test-results and uitest.log"
           exit 1
+      - name: Report accessibility audit and run-on-mac results
+        if: always()
+        run: |
+          echo "A11Y_STEP_OUTCOME=${{ steps.a11y.outcome }}"
+          echo "RUN_ON_MAC_STEP_OUTCOME=${{ steps.runonmac.outcome }}"
+          if [ "${{ steps.a11y.outcome }}" = failure ]; then echo "Accessibility audit reported issues; see A11Y_ISSUE lines above"; exit 1; fi
