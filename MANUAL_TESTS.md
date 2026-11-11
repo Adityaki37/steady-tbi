@@ -2,7 +2,7 @@
 
 Do not mark these passed based on source checks or PostgreSQL tests.
 
-CI context: simulator XCUITests (`SteadyUITests`) are configured to cover local demo flows (logging, Journal, Files preview, permission toggles, caregiver/clinician actions, check-in, reset, large text), and a local Supabase stack e2e script covers the HTTP contract. A separate simulator accessibility audit (`testAccessibilityAudit`) is also exercised in CI (results in `A11Y_ISSUE` log lines) and does not replace the VoiceOver check below. `sh scripts/run-on-mac.sh` builds and launches the app in a simulator for these manual checks. Neither runs on a physical iPhone, neither runs the iOS app against a live backend, and neither tests remote APNs. The items below stay pending until you perform them on a real device.
+CI context: simulator XCUITests (`SteadyUITests`) are configured to cover local demo flows (logging, Journal, Files preview, permission toggles, caregiver/clinician actions, check-in, reset, large text), and a local Supabase stack e2e script covers the HTTP contract. A separate simulator accessibility audit (`testAccessibilityAudit`) is also configured to run in CI (not yet verified; any `A11Y_ISSUE` log lines are the result) and does not replace the VoiceOver check below. `sh scripts/run-on-mac.sh` builds and launches the app in a simulator for these manual checks. Neither runs on a physical iPhone, neither runs the iOS app against a live backend, and neither tests remote APNs. The items below stay pending until you perform them on a real device.
 
 ## Local demo
 
