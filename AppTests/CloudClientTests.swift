@@ -12,10 +12,15 @@ private final class OfflineRegressionProtocol: URLProtocol {
     override func startLoading() {
         guard !Self.isOffline() else { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)); return }
         let circle = "00000000-0000-4000-8000-000000000001"
+        let invitedCircle = "00000000-0000-4000-8000-000000000004"
         let user = "00000000-0000-4000-8000-000000000002"
         let payload: Any
         switch request.url?.path {
-        case "/rest/v1/circles": payload = [["id": circle, "name": "Fictional circle", "owner_id": user]]
+        case "/rest/v1/circles": payload = [
+            ["id": circle, "name": "Fictional circle", "owner_id": user],
+            ["id": invitedCircle, "name": "Another fictional circle", "owner_id": user]
+        ]
+        case "/rest/v1/rpc/accept_invite": payload = invitedCircle
         case "/rest/v1/rpc/my_role": payload = "survivor"
         case "/rest/v1/rpc/my_permissions": payload = [["kind": "symptoms", "can_read": true, "can_add": true, "can_edit": true, "can_delete": true]] as [[String: Any]]
         case "/rest/v1/records": payload = [["id": "00000000-0000-4000-8000-000000000003", "circle_id": circle, "kind": "symptoms", "author_id": user, "title": "Fictional symptom", "body": "Fictional test only", "created_at": "2026-10-28T12:00:00Z", "updated_at": "2026-10-28T12:00:00Z"]]
@@ -33,6 +38,25 @@ private final class OfflineRegressionProtocol: URLProtocol {
 }
 
 final class CloudClientTests: XCTestCase {
+    func testAccountRoleDecodesWithExistingAndNewSessions() throws {
+        let decoder = JSONDecoder()
+        let account = """
+        {"id":"00000000-0000-4000-8000-000000000002","email":"fictional@example.test"}
+        """
+        let legacy = try decoder.decode(CloudUser.self, from: Data(account.utf8))
+        XCTAssertNil(legacy.profileRole)
+        for role in ["survivor", "caregiver", "clinician"] {
+            let json = """
+            {"id":"\(legacy.id)","user_metadata":{"steady_role":"\(role)","email_verified":true}}
+            """
+            XCTAssertEqual(try decoder.decode(CloudUser.self, from: Data(json.utf8)).profileRole?.rawValue, role)
+        }
+        let invalid = """
+        {"id":"\(legacy.id)","user_metadata":{"steady_role":42}}
+        """
+        XCTAssertNil(try decoder.decode(CloudUser.self, from: Data(invalid.utf8)).profileRole)
+    }
+
     @MainActor func testManualRefreshFailureClearsHistoryButKeepsSessionForRetry() async throws {
         OfflineRegressionProtocol.setOffline(false)
         let configuration = URLSessionConfiguration.ephemeral
@@ -63,5 +87,8 @@ final class CloudClientTests: XCTestCase {
         OfflineRegressionProtocol.setOffline(false)
         try await client.loadCircles()
         XCTAssertEqual(client.records.count, 1, "Refresh can recover when the connection returns")
+        try await client.accept("fictional invitation")
+        XCTAssertEqual(client.circleID?.uuidString, "00000000-0000-4000-8000-000000000004",
+                       "Joining another circle selects it immediately")
     }
 }

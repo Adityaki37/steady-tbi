@@ -9,6 +9,7 @@ struct AccountView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var creating = false
+    @State private var profileRole: DemoRole?
     @State private var busy = false
     @State private var kind: RecordKind = .symptoms
     @State private var editor = false
@@ -17,9 +18,10 @@ struct AccountView: View {
     @State private var importing = false
     @State private var deleting: CloudRecord?
     @State private var inviteEmail = ""
-    @State private var inviteRole = "caregiver"
+    @State private var inviteRole: DemoRole = .caregiver
     @State private var invitationToken = ""
     @State private var acceptToken = ""
+    @State private var joiningAnotherCircle = false
     var body: some View {
         NavigationStack {
             Form {
@@ -28,9 +30,14 @@ struct AccountView: View {
                 else {
                     accountSection
                     circlesSection
+                    if client.circles.isEmpty { joinSection }
                     if client.circleID != nil {
+                        if client.role == "survivor" {
+                            Section(secondary: "Sharing") {
+                                NavigationLink("Manage sharing") { sharingView }
+                            }
+                        }
                         journalSection
-                        if client.role == "survivor" { accessSection; invitationsSection; membersSection }
                         checkInSection
                     }
                 }
@@ -46,6 +53,18 @@ struct AccountView: View {
                 .sheet(item: $preview) { item in
                     FilePreviewView(url: item.url, title: "Fictional file") { preview = nil }
                 }
+                .sheet(isPresented: $joiningAnotherCircle) {
+                    NavigationStack {
+                        Form { joinSection }
+                            .navigationTitle("Join a circle")
+                            .navigationBarTitleDisplayMode(.inline)
+                            .toolbar {
+                                ToolbarItem(placement: .cancellationAction) {
+                                    Button("Cancel") { joiningAnotherCircle = false }
+                                }
+                            }
+                    }
+                }
                 .fileImporter(isPresented: $importing, allowedContentTypes: [.png,.jpeg,.pdf], allowsMultipleSelection: false) { result in
                     Task { await perform { if let file = try result.get().first { try await client.upload(file) } } }
                 }
@@ -55,27 +74,42 @@ struct AccountView: View {
                         Task { await perform { try await client.delete(record) } }
                     }
                 }
-                .alert("Account update", isPresented: Binding(get: { client.message != nil }, set: { if !$0 { client.message = nil } })) { Button("OK") { client.message = nil } } message: { Text(client.message ?? "") }
-                .task {
-                    push.requestAuthorizationAndRegister()
-                    if client.session != nil { await perform { try await client.loadCircles() }; await registerPushTokenIfPossible() }
-                    while !Task.isCancelled {
-                        do { try await Task.sleep(for: .seconds(15)) } catch { return }
-                        if scenePhase == .active, client.session != nil, !busy {
-                            await perform { try await client.loadCircles() }
-                        }
-                    }
-                }
                 .onChange(of: scenePhase) { _, value in
                     if value != .active { preview = nil; client.clearVisibleData() }
                     else if client.session != nil { Task { await perform { try await client.loadCircles() } } }
                 }
                 .onChange(of: client.can(.attachments, .read)) { _, allowed in if !allowed { preview = nil } }
-                .onChange(of: client.circleID) { _, _ in editing = nil; editor = false; preview = nil }
-                .onChange(of: client.session?.user.id) { _, newValue in editing = nil; editor = false; preview = nil; invitationToken = ""; if newValue != nil { Task { await registerPushTokenIfPossible() } } }
+                .onChange(of: client.circleID) { _, _ in
+                    editing = nil; editor = false; preview = nil; invitationToken = ""; inviteEmail = ""
+                }
+                .onChange(of: client.role) { _, role in
+                    if let role, let assigned = DemoRole(rawValue: role) { kind = assigned.contribution }
+                }
+                .onChange(of: client.session?.user.id) { _, newValue in
+                    editing = nil; editor = false; preview = nil; invitationToken = ""
+                    if newValue != nil {
+                        profileRole = nil
+                        push.requestAuthorizationAndRegister()
+                        Task { await registerPushTokenIfPossible() }
+                    }
+                }
                 .onChange(of: push.deviceToken) { _, _ in Task { await registerPushTokenIfPossible() } }
-                .onDisappear { preview = nil; client.clearVisibleData() }
         }
+        .task {
+            if client.session != nil {
+                push.requestAuthorizationAndRegister()
+                await perform { try await client.loadCircles() }
+                await registerPushTokenIfPossible()
+            }
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                if scenePhase == .active, client.session != nil, !busy {
+                    await perform { try await client.loadCircles() }
+                }
+            }
+        }
+        .onDisappear { preview = nil; client.clearVisibleData() }
+        .alert("Account update", isPresented: Binding(get: { client.message != nil }, set: { if !$0 { client.message = nil } })) { Button("OK") { client.message = nil } } message: { Text(client.message ?? "") }
     }
     private var setupSection: some View {
         Section(secondary: "Backend setup is pending") {
@@ -85,31 +119,65 @@ struct AccountView: View {
         }
     }
     private var signInSection: some View {
-        Section(creating ? "Create a test account" : "Sign in") {
-            TextField("Email", text: $email).textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
-            SecureField("Password", text: $password).textContentType(creating ? .newPassword : .password)
-            Toggle("Create a new account", isOn: $creating)
+        Section(creating ? "Create an account" : "Sign in") {
+            Picker("Account action", selection: $creating) {
+                Text("Sign in").tag(false)
+                Text("Sign up").tag(true)
+            }.pickerStyle(.segmented).disabled(busy)
+            if creating {
+                profileRolePicker("I’m signing up as")
+                if let profileRole { Text(profileDescription(profileRole)).font(.footnote).foregroundStyle(Palette.secondaryText) }
+            }
+            TextField("Email", text: $email).textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(busy)
+            SecureField("Password", text: $password).textContentType(creating ? .newPassword : .password).disabled(busy)
             Button(busy ? "Working…" : creating ? "Create account" : "Sign in") {
                 Task {
-                    await perform { try await client.signIn(email: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password, create: creating) }
-                    password = ""
+                    await perform {
+                        let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if creating, let profileRole {
+                            try await client.signUp(email: address, password: password, role: profileRole)
+                            creating = false
+                        } else {
+                            try await client.signIn(email: address, password: password)
+                        }
+                        password = ""
+                    }
                 }
-            }.disabled(busy || email.isEmpty || password.isEmpty)
-            Text("Confirm the email if requested, then sign in. Use separate test accounts for each person. Passwords are not stored by this app; session tokens are stored in iOS Keychain.").font(.footnote).foregroundStyle(Palette.secondaryText)
+            }.disabled(busy || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty || (creating && profileRole == nil))
+        }
+    }
+    private func profileRolePicker(_ label: String) -> some View {
+        Picker(label, selection: $profileRole) {
+            Text("Choose a role").tag(DemoRole?.none)
+            ForEach(DemoRole.allCases) { Text($0.title).tag(Optional($0)) }
+        }.disabled(busy)
+    }
+    private func profileDescription(_ role: DemoRole) -> String {
+        switch role {
+        case .survivor: return "Create your own circle and choose what to share."
+        case .caregiver: return "Accept a survivor’s invitation to share observations and suggest check-ins."
+        case .clinician: return "Accept a survivor’s invitation to review shared records and contribute notes."
         }
     }
     private var accountSection: some View {
-        Section {
+        Section(secondary: "Account") {
             Text(client.session?.user.email ?? "Signed in")
-            if let role = client.role { Label("Assigned role: \(role.capitalized)", systemImage: "person.crop.circle.badge.checkmark") }
+            if let accountRole = client.session?.user.profileRole {
+                LabeledContent("Account role", value: accountRole.title)
+            } else {
+                profileRolePicker("Account role")
+                Button("Save account role") {
+                    Task { await perform { if let profileRole { try await client.saveProfileRole(profileRole) } } }
+                }.disabled(busy || profileRole == nil)
+            }
             Button("Sign out", role: .destructive) {
-                invitationToken = ""; acceptToken = ""; password = ""; preview = nil
+                invitationToken = ""; acceptToken = ""; password = ""; preview = nil; profileRole = nil; creating = false
                 Task { await client.signOut() }
             }
         }
     }
     private var circlesSection: some View {
-        Section(secondary: "Fictional circles") {
+        Section(secondary: "Circles") {
             if !client.circles.isEmpty {
                 Picker("Circle", selection: Binding(get: { client.circleID }, set: { value in
                     preview = nil; invitationToken = ""; client.clearVisibleData(); client.circleID = value
@@ -117,14 +185,42 @@ struct AccountView: View {
                 })) {
                     ForEach(client.circles) { Text($0.name).tag(Optional($0.id)) }
                 }
+                Button("Join another circle") { joiningAnotherCircle = true }.disabled(busy)
+            }
+            if let role = client.role { LabeledContent("Role in this circle", value: role.capitalized) }
+            if (client.session?.user.profileRole == .survivor || client.session?.user.profileRole == nil),
+               !client.circles.contains(where: { $0.owner_id == client.session?.user.id }) {
+                Button("Create my circle") { Task { await perform { try await client.createCircle() } } }.disabled(busy)
             }
             Button("Refresh shared data") { Task { await perform { try await client.loadCircles() } } }.disabled(busy)
-            if !client.circles.contains(where: { $0.owner_id == client.session?.user.id }) {
-                Button("Start my survivor circle") { Task { await perform { try await client.createCircle() } } }.disabled(busy)
-            }
-            TextField("Invitation token", text: $acceptToken, axis: .vertical).textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
-            Button("Accept invitation") { Task { await perform { try await client.accept(acceptToken.trimmingCharacters(in: .whitespacesAndNewlines)); acceptToken = "" } } }.disabled(busy || acceptToken.isEmpty)
         }
+    }
+    private var joinSection: some View {
+        Section(secondary: "Join a survivor’s circle") {
+            Text("Use the invitation code the survivor shares with you. Sign in with the email address they invited.").font(.footnote).foregroundStyle(Palette.secondaryText)
+            TextField("Invitation code", text: $acceptToken, axis: .vertical)
+                .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
+            Button("Join circle") {
+                Task {
+                    await perform {
+                        try await client.accept(acceptToken.trimmingCharacters(in: .whitespacesAndNewlines))
+                        acceptToken = ""
+                        joiningAnotherCircle = false
+                    }
+                }
+            }.disabled(busy || acceptToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+    private var sharingView: some View {
+        Form {
+            if client.role == "survivor" {
+                invitationsSection
+                accessSection
+                membersSection
+            } else {
+                ContentUnavailableView("Sharing unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
+            }
+        }.navigationTitle("Manage sharing")
     }
     private var journalSection: some View {
         Section(secondary: "Shared journal") {
@@ -167,8 +263,8 @@ struct AccountView: View {
         }
     }
     private var accessSection: some View {
-        Section(secondary: "Survivor access control") {
-            Text("Read/add/edit/delete apply per role and entry type. Edit/delete also require read. Changes are enforced by server policies on the next request.").font(.footnote)
+        Section(secondary: "What each role can access") {
+            Text("These permissions apply to everyone with that role in this circle. Review them before sharing an invitation. Editing or deleting also requires read access.").font(.footnote)
             ForEach(client.grants) { grant in
                 DisclosureGroup("\(grant.role.capitalized) · \(RecordKind(rawValue: grant.kind)?.title ?? grant.kind)") {
                     ForEach(DemoAction.allCases) { action in
@@ -180,14 +276,26 @@ struct AccountView: View {
         }
     }
     private var invitationsSection: some View {
-        Section(secondary: "Invite a test caregiver or clinician") {
+        Section(secondary: "Invite a caregiver or clinician") {
             TextField("Recipient account email", text: $inviteEmail).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
-            Picker("Invite role", selection: $inviteRole) { Text("Caregiver").tag("caregiver"); Text("Clinician").tag("clinician") }
-            Button("Create one-time invitation") { Task { await perform { invitationToken = try await client.invite(email: inviteEmail, role: inviteRole) } } }.disabled(busy || inviteEmail.isEmpty)
+            Picker("Role in your circle", selection: $inviteRole) {
+                Text("Caregiver").tag(DemoRole.caregiver)
+                Text("Clinician").tag(DemoRole.clinician)
+            }
+            Text("Review the role’s permissions below before sharing the code.").font(.footnote).foregroundStyle(Palette.secondaryText)
+            Button("Create invitation code") {
+                Task {
+                    await perform {
+                        invitationToken = try await client.invite(email: inviteEmail.trimmingCharacters(in: .whitespacesAndNewlines), role: inviteRole.rawValue)
+                        inviteEmail = ""
+                        try await client.refresh()
+                    }
+                }
+            }.disabled(busy || inviteEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             if !invitationToken.isEmpty {
-                Text("Share this token privately with the named recipient. Expires after seven days; accepted only by their confirmed email account.").font(.footnote)
+                Text("Share this code privately with the person you invited. They can use it once within seven days.").font(.footnote)
                 Text(invitationToken).font(.caption.monospaced()).textSelection(.enabled).privacySensitive()
-                ShareLink("Share invitation token", item: invitationToken)
+                ShareLink("Share invitation code", item: invitationToken)
             }
             ForEach(client.invitations.filter { $0.revoked_at == nil && $0.accepted_at == nil }) { invitation in
                 VStack(alignment: .leading) {
@@ -196,15 +304,18 @@ struct AccountView: View {
                     Button("Revoke invitation", role: .destructive) { Task { await perform { try await client.revoke(invitation.id) } } }.disabled(busy)
                 }
             }
-            Text("No invitation email is sent automatically.").font(.caption).foregroundStyle(Palette.secondaryText)
         }
     }
     private var membersSection: some View {
-        Section(secondary: "Connected test accounts") {
+        Section(secondary: "People with access") {
+            if client.members.isEmpty { Text("No one has joined your circle yet.").foregroundStyle(Palette.secondaryText) }
             ForEach(client.members) { member in
                 VStack(alignment: .leading) {
                     Text(member.role.capitalized)
-                    Text(member.user_id.uuidString).font(.caption.monospaced())
+                    let invitation = client.invitations.first {
+                        $0.recipient_user_id == member.user_id && $0.accepted_at != nil
+                    }
+                    Text(invitation?.recipient_email ?? member.user_id.uuidString).font(.subheadline)
                     Button("Remove access", role: .destructive) { Task { await perform { try await client.removeMember(member.user_id) } } }.disabled(busy)
                 }
             }
@@ -225,7 +336,10 @@ struct AccountView: View {
     }
     private func perform(_ operation: () async throws -> Void) async {
         guard !busy else { return }; busy = true; defer { busy = false }
-        do { try await operation() } catch is CancellationError { } catch { client.message = error.localizedDescription }
+        do { try await operation() }
+        catch is CancellationError { }
+        catch let error as URLError where error.code == .cancelled { }
+        catch { client.message = error.localizedDescription }
     }
     // Upload the captured APNs token once the user is signed in. Silent on failure
     // (for example without a paid Apple account); the foreground refresh is the fallback.

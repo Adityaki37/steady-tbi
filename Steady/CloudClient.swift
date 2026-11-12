@@ -15,9 +15,25 @@ struct BackendConfig {
         return BackendConfig(url: url, key: key)
     }
 }
-struct CloudUser: Codable { let id: UUID; let email: String? }
+struct CloudUser: Codable {
+    struct Metadata: Codable {
+        let steady_role: String?
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            steady_role = try? values.decode(String.self, forKey: .steady_role)
+        }
+    }
+
+    let id: UUID
+    let email: String?
+    var user_metadata: Metadata? = nil
+
+    // Profile information for onboarding. Authorization comes from the circle.
+    var profileRole: DemoRole? { user_metadata?.steady_role.flatMap(DemoRole.init(rawValue:)) }
+}
 struct CloudSession: Codable {
-    let access_token: String; let refresh_token: String; let expires_at: TimeInterval; let user: CloudUser
+    let access_token: String; let refresh_token: String; let expires_at: TimeInterval; var user: CloudUser
 }
 struct CloudCircle: Codable, Identifiable, Hashable { let id: UUID; let name: String; let owner_id: UUID }
 struct CloudPermission: Codable, Identifiable {
@@ -34,7 +50,10 @@ struct CloudRecord: Codable, Identifiable {
 }
 struct CloudCheckIn: Codable, Identifiable { let id: UUID; let body: String; let created_at: String }
 struct CloudMember: Codable, Identifiable { let user_id: UUID; let role: String; var id: UUID { user_id } }
-struct CloudInvitation: Codable, Identifiable { let id: UUID; let recipient_email: String; let role: String; let expires_at: String; let accepted_at: String?; let revoked_at: String? }
+struct CloudInvitation: Codable, Identifiable {
+    let id: UUID; let recipient_email: String; let recipient_user_id: UUID?
+    let role: String; let expires_at: String; let accepted_at: String?; let revoked_at: String?
+}
 struct RoleGrant: Codable, Identifiable {
     let role: String; let kind: String; var can_read: Bool; var can_add: Bool; var can_edit: Bool; var can_delete: Bool
     var id: String { role + kind }
@@ -137,13 +156,43 @@ private enum SessionKeychain {
         return data
     }
     private func rpc(_ name: String, _ body: [String: Any]) async throws -> Data { try await request("rest/v1/rpc/" + name, method: "POST", body: body) }
-    func signIn(email: String, password: String, create: Bool) async throws {
+    func signIn(email: String, password: String) async throws {
+        try await authenticate(email: email, password: password, newRole: nil)
+    }
+    func signUp(email: String, password: String, role: DemoRole) async throws {
+        try await authenticate(email: email, password: password, newRole: role)
+    }
+    private func authenticate(email: String, password: String, newRole: DemoRole?) async throws {
         sessionEpoch = UUID()
+        let expected = sessionEpoch
         clearVisibleData(); circles = []; circleID = nil
-        let data = try await request(create ? "auth/v1/signup" : "auth/v1/token?grant_type=password", method: "POST", body: ["email": email, "password": password], authenticated: false)
-        if let value = try? JSONDecoder().decode(CloudSession.self, from: data), let config {
-            try SessionKeychain.save(value, config.url.absoluteString); session = value; try await loadCircles()
-        } else { message = "Check your email to confirm this test account, then sign in. No circle has been joined yet." }
+        var body: [String: Any] = ["email": email, "password": password]
+        if let newRole { body["data"] = ["steady_role": newRole.rawValue] }
+        let data = try await request(newRole == nil ? "auth/v1/token?grant_type=password" : "auth/v1/signup",
+                                     method: "POST", body: body, authenticated: false)
+        guard sessionEpoch == expected, let config else { throw CancellationError() }
+        let value: CloudSession
+        do {
+            value = try JSONDecoder().decode(CloudSession.self, from: data)
+        } catch {
+            guard newRole != nil, (try? JSONDecoder().decode(CloudUser.self, from: data)) != nil else { throw error }
+            message = "Confirm your email, then sign in with the same address."
+            return
+        }
+        try SessionKeychain.save(value, config.url.absoluteString)
+        session = value
+        try await loadCircles()
+    }
+    func saveProfileRole(_ role: DemoRole) async throws {
+        let expected = sessionEpoch
+        let data = try await request("auth/v1/user", method: "PUT", body: ["data": ["steady_role": role.rawValue]])
+        let user = try JSONDecoder().decode(CloudUser.self, from: data)
+        guard sessionEpoch == expected, var current = session, current.user.id == user.id, let config else {
+            throw CancellationError()
+        }
+        current.user = user
+        try SessionKeychain.save(current, config.url.absoluteString)
+        session = current
     }
     func signOut() async {
         sessionEpoch = UUID()
@@ -156,13 +205,18 @@ private enum SessionKeychain {
             _ = try? await network.data(for: request)
         }
     }
-    func loadCircles() async throws {
+    func loadCircles(selecting preferredCircle: UUID? = nil) async throws {
         let expected = sessionEpoch
         do {
             let data = try await request("rest/v1/circles?select=id,name,owner_id&order=created_at")
             guard sessionEpoch == expected, session != nil else { throw CancellationError() }
             circles = try JSONDecoder().decode([CloudCircle].self, from: data)
-            if circleID == nil || !circles.contains(where: { $0.id == circleID }) { circleID = circles.first?.id }
+            let selection = preferredCircle ?? circleID
+            let nextCircle = circles.first(where: { $0.id == selection })?.id ?? circles.first?.id
+            if nextCircle != circleID {
+                clearVisibleData()
+                circleID = nextCircle
+            }
             try await refresh()
         } catch {
             if sessionEpoch == expected { clearVisibleData(); circles = []; circleID = nil }
@@ -188,7 +242,7 @@ private enum SessionKeychain {
             if assigned == "survivor" {
                 let grantData = try await request("rest/v1/circle_permissions?circle_id=eq.\(id.uuidString)&order=role,kind")
                 let memberData = try await request("rest/v1/circle_members?circle_id=eq.\(id.uuidString)")
-                let inviteData = try await request("rest/v1/circle_invitations?select=id,recipient_email,role,expires_at,accepted_at,revoked_at&circle_id=eq.\(id.uuidString)")
+                let inviteData = try await request("rest/v1/circle_invitations?select=id,recipient_email,recipient_user_id,role,expires_at,accepted_at,revoked_at&circle_id=eq.\(id.uuidString)&order=accepted_at.desc.nullslast")
                 guard expected == generation, circleID == id else { return }
                 grants = try JSONDecoder().decode([RoleGrant].self, from: grantData)
                 members = try JSONDecoder().decode([CloudMember].self, from: memberData)
@@ -198,14 +252,18 @@ private enum SessionKeychain {
     }
     func can(_ kind: RecordKind, _ action: DemoAction) -> Bool { permissions.first { $0.kind == kind.rawValue }?.allows(action) == true }
     func createCircle() async throws {
-        _ = try await rpc("create_circle", ["n": "Fictional Alex’s circle"]); try await loadCircles()
+        let data = try await rpc("create_circle", ["n": "My Steady circle"])
+        try await loadCircles(selecting: JSONDecoder().decode(UUID.self, from: data))
     }
     func invite(email: String, role: String) async throws -> String {
         guard let id = circleID else { throw DemoError.missing }
         let data = try await rpc("invite_member", ["c": id.uuidString, "email": email, "r": role])
-        let token = try JSONDecoder().decode(String.self, from: data); try await refresh(); return token
+        return try JSONDecoder().decode(String.self, from: data)
     }
-    func accept(_ token: String) async throws { _ = try await rpc("accept_invite", ["token": token]); try await loadCircles() }
+    func accept(_ token: String) async throws {
+        let data = try await rpc("accept_invite", ["token": token])
+        try await loadCircles(selecting: JSONDecoder().decode(UUID.self, from: data))
+    }
     func revoke(_ id: UUID) async throws { _ = try await rpc("revoke_invite", ["i": id.uuidString]); try await refresh() }
     func removeMember(_ id: UUID) async throws {
         guard let circle = circleID else { throw DemoError.missing }

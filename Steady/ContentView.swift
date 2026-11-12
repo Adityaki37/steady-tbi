@@ -41,11 +41,13 @@ struct ContentView: View {
                     if !typeSize.isAccessibilitySize { Spacer() }
                     Text("FICTIONAL DEMO").font(.caption.bold()).foregroundStyle(Palette.secondaryText).fixedSize(horizontal: false, vertical: true)
                 }
-                Toggle("Separate accounts (configured backend)", isOn: $accounts).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                Toggle("Accounts and sharing", isOn: $accounts).font(.subheadline).fixedSize(horizontal: false, vertical: true)
                 if !accounts { Picker("Demo role", selection: $store.role) {
                     ForEach(DemoRole.allCases) { Text($0.title).tag($0) }
                 }.pickerStyle(.segmented).accessibilityIdentifier("rolePicker").accessibilityHint("Switches a fictional role on this device. This is not authentication.") }
-                Text(accounts ? "Account roles are assigned by survivor invitations" : "One device · role switcher, not secure sign-in").font(.caption).foregroundStyle(Palette.secondaryText).fixedSize(horizontal: false, vertical: true)
+                if !accounts {
+                    Text("One device · role switcher, not secure sign-in").font(.caption).foregroundStyle(Palette.secondaryText).fixedSize(horizontal: false, vertical: true)
+                }
             }.padding().background(Palette.surface)
             if accounts {
                 AccountView()

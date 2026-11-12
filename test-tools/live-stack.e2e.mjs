@@ -67,6 +67,23 @@ async function signIn(name) {
   ok(r, `sign in ${name}`);
   people[name].token = r.json.access_token;
   people[name].id = r.json.user.id;
+  return r.json.user;
+}
+async function signUp(name, role) {
+  const email = emailFor(name);
+  const body = { email, password };
+  if (role) body.data = { steady_role: role };
+  const r = await api('auth/v1/signup', { method: 'POST', body });
+  ok(r, 'signup');
+  assert.ok(!r.json.access_token, 'no session before confirmation');
+  people[name] = { email, id: r.json.id ?? r.json.user?.id };
+  assert.ok(people[name].id, 'user id returned');
+}
+async function confirmEmail(name) {
+  const r = await api(`auth/v1/admin/users/${people[name].id}`, {
+    method: 'PUT', key: service, token: service, body: { email_confirm: true }
+  });
+  ok(r, 'admin confirm');
 }
 const T = (name) => people[name].token;
 
@@ -81,31 +98,34 @@ const newRecord = (who, kind, title, extra = {}, representation = false) =>
   api('rest/v1/records', { method: 'POST', token: T(who), representation, body: { circle_id: circle, author_id: people[who].id, kind, title, body: 'Fictional entry.', ...extra } });
 
 // ---------------------------------------------------------------- accounts
-await check('sign up via /auth/v1/signup returns no session while email is unconfirmed', async () => {
-  const email = emailFor('survivor');
-  const r = await api('auth/v1/signup', { method: 'POST', body: { email, password } });
-  ok(r, 'signup');
-  assert.ok(!r.json.access_token, 'no session before confirmation');
-  people.survivor = { email, id: r.json.id ?? r.json.user?.id };
-  assert.ok(people.survivor.id, 'user id returned');
+await check('survivor signup returns no session while email is unconfirmed', async () => {
+  await signUp('survivor', 'survivor');
 });
 await check('password sign-in is refused until the email is confirmed', async () => {
   rejected(await api('auth/v1/token?grant_type=password', { method: 'POST', body: { email: people.survivor.email, password } }));
 });
-await check('admin API confirms the email and password sign-in then works', async () => {
-  const r = await api(`auth/v1/admin/users/${people.survivor.id}`, { method: 'PUT', key: service, token: service, body: { email_confirm: true } });
-  ok(r, 'admin confirm');
-  await signIn('survivor');
+await check('survivor profile role is saved through confirmation and sign-in', async () => {
+  await confirmEmail('survivor');
+  assert.equal((await signIn('survivor')).user_metadata.steady_role, 'survivor');
 });
-for (const name of ['caregiver', 'clinician', 'outsider', 'unconfirmed']) {
-  await check(`create account ${name}`, async () => {
-    if (name === 'unconfirmed') {
-      const email = emailFor(name);
-      const r = await api('auth/v1/signup', { method: 'POST', body: { email, password } });
-      ok(r, 'signup'); people[name] = { email, id: r.json.id ?? r.json.user?.id };
-    } else { await adminCreate(name); await signIn(name); }
+for (const role of ['caregiver', 'clinician']) {
+  await check(`${role} can sign up, confirm email and retrieve their profile role`, async () => {
+    await signUp(role, role);
+    await confirmEmail(role);
+    assert.equal((await signIn(role)).user_metadata.steady_role, role);
   });
 }
+await check('a legacy account can save its own profile role', async () => {
+  await adminCreate('outsider');
+  assert.equal((await signIn('outsider')).user_metadata?.steady_role, undefined);
+  const response = await api('auth/v1/user', {
+    method: 'PUT', token: T('outsider'), body: { data: { steady_role: 'survivor' } }
+  });
+  ok(response, 'save profile role');
+  assert.equal(response.json.user_metadata.steady_role, 'survivor');
+  assert.equal((await signIn('outsider')).user_metadata.steady_role, 'survivor');
+});
+await check('create unconfirmed account', async () => { await signUp('unconfirmed', 'caregiver'); });
 
 // ---------------------------------------------------------------- circle and invitations
 await check('anonymous key cannot create a circle', async () => {
@@ -129,6 +149,15 @@ await check('outsider sees no circle and my_role is null', async () => {
   const perms = await rpc('my_permissions', T('outsider'), { c: circle });
   ok(perms); assert.deepEqual(perms.json, []);
 });
+await check('caregiver and clinician profiles get no shared access before accepting an invitation', async () => {
+  for (const role of ['caregiver', 'clinician']) {
+    emptyRows(await api('rest/v1/circles?select=id', { token: T(role) }), 'circles');
+    const assigned = await rpc('my_role', T(role), { c: circle });
+    ok(assigned);
+    assert.equal(assigned.json, null);
+    emptyRows(await records(role), 'records');
+  }
+});
 let pendingCaregiverToken;
 await check('invite_member: only the survivor may invite, tokens are returned once', async () => {
   rejected(await rpc('invite_member', T('outsider'), { c: circle, email: people.outsider.email, r: 'clinician' }), 'outsider invite');
@@ -150,6 +179,21 @@ await check('accept_invite rejects a wrong recipient, accepts the right one, rej
   const c = await rpc('accept_invite', T('clinician'), { token: clinicianToken });
   ok(c, 'clinician accept'); assert.equal(c.json, circle);
   rejected(await rpc('accept_invite', T('clinician'), { token: clinicianToken }), 'clinician replay');
+});
+await check('changing a profile role leaves the survivor-assigned role and permissions in place', async () => {
+  const before = await rpc('my_permissions', T('caregiver'), { c: circle });
+  ok(before);
+  const response = await api('auth/v1/user', {
+    method: 'PUT', token: T('caregiver'), body: { data: { steady_role: 'survivor' } }
+  });
+  ok(response, 'change profile role');
+  assert.equal((await signIn('caregiver')).user_metadata.steady_role, 'survivor');
+  const assigned = await rpc('my_role', T('caregiver'), { c: circle });
+  ok(assigned);
+  assert.equal(assigned.json, 'caregiver');
+  const after = await rpc('my_permissions', T('caregiver'), { c: circle });
+  ok(after);
+  assert.deepEqual(after.json, before.json);
 });
 await check('an unconfirmed account cannot sign in or accept an invitation', async () => {
   const t = await rpc('invite_member', T('survivor'), { c: circle, email: people.unconfirmed.email, r: 'caregiver' });

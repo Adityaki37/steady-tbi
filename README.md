@@ -22,6 +22,13 @@ No paid Apple membership, TestFlight, Rork or cloud build service is required fo
 - **Remote push (requires hosted setup and device verification):** the full APNs path exists end to end: a per-user `device_tokens` table with own-rows-only RLS; the iOS app registers for remote notifications, captures the APNs device token and uploads it via the account client; a `symptom_break` check-in fires an `AFTER INSERT` trigger (`private.notify_symptom_break`) that looks up the circle owner's tokens server-side and invokes a Supabase Edge Function (`supabase/functions/notify-symptom-break`) which signs an APNs JWT from Edge Function secrets and POSTs to Apple's APNs. Local tests covered the stored break prompt and per-user token permissions. The hosted webhook and APNs delivery are pending. Live cross-device delivery is **gated**: it requires a **paid Apple Developer Program membership**, an **APNs `.p8` auth key** (key id / team id / bundle id), and the **Push Notifications capability with a real provisioning profile**. A free Personal Team cannot deliver remote pushes. Until the paid account and APNs secrets are configured, the survivor still sees the prompt on foreground refresh, and the **local-notification fallback** demonstrates the UX on the same device now. The existing 15-second foreground polling is retained as the fallback either way.
 - Calm system typography, adaptable light/dark colors, semantic labels, Dynamic Type-friendly layouts, and no flashing or forced animations. Actual VoiceOver, large-text and device layout QA remains pending.
 
+## Create an account and share a circle
+
+1. Turn on **Accounts and sharing**, choose **Sign up**, and select **Survivor**, **Caregiver**, or **Clinician**. Confirm your email and sign in. Existing accounts can save a role from the Account section.
+2. As a survivor, choose **Create my circle** and open **Manage sharing**. Review what each role can access, then enter the recipient’s email and choose **Caregiver** or **Clinician** to create an invitation code. Share it with that person.
+3. The recipient signs in with the invited email address and enters the code under **Join a survivor’s circle**. The circle opens with the role assigned by the invitation.
+4. In **Manage sharing**, the survivor can change read, add, edit, and delete permissions by role and record type, revoke pending invitations, or remove a person’s access.
+
 ## Modes and data
 
 The local role picker is an explicit demonstration, **not production authentication**. Anyone with access to that demo can switch to Survivor. Separate-account mode does not use this role picker: its role comes from ownership or an accepted server invitation.
