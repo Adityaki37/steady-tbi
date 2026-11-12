@@ -27,12 +27,18 @@ UDID=$(echo "$LINE" | grep -oE '[0-9A-F-]{36}' | head -1)
 echo "Simulator: $(echo "$LINE" | sed 's/^ *//') "
 xcrun simctl boot "$UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$UDID" -b
-open -a Simulator
+BUILD_DIR="${STEADY_BUILD_DIR:-$HOME/Library/Developer/SteadyDerivedData}"
 xcodebuild -project Steady.xcodeproj -scheme Steady -sdk iphonesimulator \
-  -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath ./DerivedData \
-  CODE_SIGNING_ALLOWED=NO build
-APP=./DerivedData/Build/Products/Debug-iphonesimulator/Steady.app
+  -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$BUILD_DIR" \
+  CODE_SIGN_IDENTITY=- build
+APP="$BUILD_DIR/Build/Products/Debug-iphonesimulator/Steady.app"
 xcrun simctl install "$UDID" "$APP"
 xcrun simctl launch "$UDID" com.aditya.steadydemo
-echo "Steady is running in the Simulator window. Built app: $APP"
+DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
+if [ -d "$DEVELOPER_DIR/../Applications/DeviceHub.app" ]; then
+  open -a "$DEVELOPER_DIR/../Applications/DeviceHub.app"
+elif [ -d "$DEVELOPER_DIR/Applications/Simulator.app" ]; then
+  open -a "$DEVELOPER_DIR/Applications/Simulator.app"
+fi
+echo "Steady is running on the iPhone simulator. Built app: $APP"
 echo 'Next: use MANUAL_TESTS.md, or open Steady.xcodeproj in Xcode (scripts/run-on-mac.sh --open).'

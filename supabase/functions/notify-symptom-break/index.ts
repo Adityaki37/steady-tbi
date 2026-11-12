@@ -74,6 +74,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
+  const webhookSecret = Deno.env.get("SYMPTOM_BREAK_WEBHOOK_SECRET");
+  if (!webhookSecret || req.headers.get("x-steady-webhook-secret") !== webhookSecret) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   let payload: Payload;
   try {
     payload = await req.json();

@@ -165,7 +165,7 @@ private enum SessionKeychain {
             if circleID == nil || !circles.contains(where: { $0.id == circleID }) { circleID = circles.first?.id }
             try await refresh()
         } catch {
-            if sessionEpoch == expected { clearVisibleData(); circles = [] }
+            if sessionEpoch == expected { clearVisibleData(); circles = []; circleID = nil }
             // A network error clears content but retains the account for retry.
             throw error
         }

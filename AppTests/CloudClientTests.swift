@@ -58,6 +58,7 @@ final class CloudClientTests: XCTestCase {
         XCTAssertTrue(client.invitations.isEmpty)
         XCTAssertTrue(client.grants.isEmpty)
         XCTAssertNil(client.role)
+        XCTAssertNil(client.circleID)
         XCTAssertEqual(client.session?.user.id, session.user.id, "Network failure must not erase the account session")
         OfflineRegressionProtocol.setOffline(false)
         try await client.loadCircles()

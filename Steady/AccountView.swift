@@ -62,13 +62,13 @@ struct AccountView: View {
                     while !Task.isCancelled {
                         do { try await Task.sleep(for: .seconds(15)) } catch { return }
                         if scenePhase == .active, client.session != nil, !busy {
-                            do { try await client.refresh() } catch { client.message = error.localizedDescription }
+                            await perform { try await client.loadCircles() }
                         }
                     }
                 }
                 .onChange(of: scenePhase) { _, value in
                     if value != .active { preview = nil; client.clearVisibleData() }
-                    else if client.session != nil { Task { await perform { try await client.refresh() } } }
+                    else if client.session != nil { Task { await perform { try await client.loadCircles() } } }
                 }
                 .onChange(of: client.can(.attachments, .read)) { _, allowed in if !allowed { preview = nil } }
                 .onChange(of: client.circleID) { _, _ in editing = nil; editor = false; preview = nil }
@@ -117,8 +117,8 @@ struct AccountView: View {
                 })) {
                     ForEach(client.circles) { Text($0.name).tag(Optional($0.id)) }
                 }
-                Button("Refresh shared data") { Task { await perform { try await client.loadCircles() } } }.disabled(busy)
             }
+            Button("Refresh shared data") { Task { await perform { try await client.loadCircles() } } }.disabled(busy)
             if !client.circles.contains(where: { $0.owner_id == client.session?.user.id }) {
                 Button("Start my survivor circle") { Task { await perform { try await client.createCircle() } } }.disabled(busy)
             }

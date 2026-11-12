@@ -39,6 +39,7 @@ Edge Function runtime by Supabase; you do not set those yourself.
 
 | Variable | Purpose |
 | --- | --- |
+| `SYMPTOM_BREAK_WEBHOOK_SECRET` | Shared secret from the database webhook, sent as `x-steady-webhook-secret` |
 | `APNS_KEY_ID` | APNs auth key id (`kid`) from the Apple Developer portal |
 | `APNS_TEAM_ID` | Apple Developer team id (`iss`) |
 | `APNS_BUNDLE_ID` | App bundle id, sent as the `apns-topic` header |
@@ -55,7 +56,7 @@ supabase functions deploy notify-symptom-break
 To wire the database trigger to this function in the hosted project, the webhook helper
 (`supabase_functions.http_request` / `pg_net`) must be available. In plain Postgres and
 in the PGlite test harness that helper is absent, so `private.notify_symptom_break()`
-no-ops the network call and the check-in still inserts cleanly.
+no-ops the network call and the check-in still inserts cleanly. The deployed webhook must send the shared secret header. The function returns HTTP 401 when the secret is absent or incorrect.
 
 ## Local check
 

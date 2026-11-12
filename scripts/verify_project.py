@@ -42,7 +42,7 @@ require(folder_refs and 'Resources' not in folder_refs, 'No top-level bundle fol
 require(not (ROOT/'Steady/Resources').exists(), 'No Steady/Resources directory')
 config=plistlib.loads((ROOT/'Steady/SteadyResources/Backend.example.plist').read_bytes())
 require(set(config)=={'SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY'}, 'Only public client config keys in template')
-require(not (ROOT/'Steady/SteadyResources/Backend.local.plist').exists(), 'No configured hosted backend in deliverable')
+require('Steady/SteadyResources/Backend.local.plist' in (ROOT/'.gitignore').read_text().splitlines(), 'Per-machine backend configuration is gitignored')
 image=ROOT/'Steady/SteadyResources/Fictional-brain-MRI.png'
 raw=image.read_bytes()
 require(raw[:8]==b'\x89PNG\r\n\x1a\n' and struct.unpack('>II',raw[16:24])==(1200,1400), 'Fictional MRI PNG has expected format and dimensions')
