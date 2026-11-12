@@ -85,7 +85,10 @@ final class SteadyUITests: XCTestCase {
         titleField.tap()
         titleField.typeText(title)
         let bodyField = app.textFields["entryBody"].exists ? app.textFields["entryBody"] : app.textViews["entryBody"]
-        if bodyField.waitForExistence(timeout: 5) { bodyField.tap(); bodyField.typeText(body) }
+        XCTAssertTrue(bodyField.waitForExistence(timeout: 5))
+        // The editable line is at the top of the empty multiline field.
+        bodyField.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.12)).tap()
+        bodyField.typeText(body)
         if intensityTaps > 0 {
             let stepper = app.steppers["intensityStepper"]
             XCTAssertTrue(stepper.waitForExistence(timeout: 5))
