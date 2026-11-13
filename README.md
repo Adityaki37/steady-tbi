@@ -42,6 +42,8 @@ Apple’s free Personal Team supports own-device testing with temporary provisio
 3. The recipient signs in with their demo username and enters the code under **Join a survivor’s circle**. The circle opens with the role assigned by the invitation. To try all three accounts on one Mac, sign out before switching roles or use separate iPhone simulators.
 4. In **Manage sharing**, the survivor can change read, add, edit, and delete permissions by role and record type, revoke pending invitations, or remove a person’s access.
 
+Use **Account → Sign out** to switch accounts on the same device. Choose **Sign up** for a new account or **Sign in** to return to an existing one. Setup follows the signed-in account. Survivors with an unfinished profile see setup when they sign in, and returning survivors with a saved profile can continue where they left off.
+
 On first sign-in, Steady asks survivors for their name, injury date if known, and optional injury details. They choose symptoms by category, can add their own, and put them in the order they usually notice them. The order is a personal estimate. The survivor can edit it from **Account → Survivor profile**.
 
 In **Manage sharing → People with access**, the survivor can turn on **Share injury details and ranked symptoms** for each person who has joined. That person can read the survivor’s current injury date, description, notes, and symptom order under **Shared survivor profile**. Profile sharing starts off and can be turned off independently of journal access. The profile name stays private. Removing a person from the circle also revokes their profile access.

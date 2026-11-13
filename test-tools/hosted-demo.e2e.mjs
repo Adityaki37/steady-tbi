@@ -6,7 +6,7 @@ const key = process.env.SUPABASE_PUBLISHABLE_KEY;
 assert.ok(base && key?.startsWith('sb_publishable_'), 'Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY');
 const run = randomBytes(7).toString('hex');
 const password = randomBytes(24).toString('base64url');
-const roles = ['survivor', 'caregiver', 'clinician'];
+const roles = ['survivor', 'caregiver', 'clinician', 'new-survivor'];
 const people = {};
 
 async function api(path, { token, body, method = body === undefined ? 'GET' : 'POST', prefer = 'return=representation' } = {}) {
@@ -28,9 +28,10 @@ const rpc = (role, name, body) => api(`rest/v1/rpc/${name}`, { ...auth(role), bo
 for (const role of roles) {
   const username = `qa-${role}-${run}`;
   const email = `${username}@steady-demo.example`;
-  expect(await api('functions/v1/demo-signup', { body: { username, password, role } }), 201, `${role} signup`);
+  const profileRole = role === 'new-survivor' ? 'survivor' : role;
+  expect(await api('functions/v1/demo-signup', { body: { username, password, role: profileRole } }), 201, `${role} signup`);
   const session = expect(await api('auth/v1/token?grant_type=password', { body: { email, password } }), 200, `${role} sign-in`);
-  assert.equal(session.user.user_metadata.steady_role, role);
+  assert.equal(session.user.user_metadata.steady_role, profileRole);
   people[role] = { token: session.access_token, id: session.user.id, username, email };
 }
 expect(await api('functions/v1/demo-signup', { body: { username: people.survivor.username, password, role: 'clinician' } }), 409, 'duplicate signup');
@@ -78,6 +79,21 @@ for (const role of ['caregiver', 'clinician']) {
   assert.deepEqual(expect(await api(`rest/v1/activity_logs?id=eq.${activity.id}`, auth(role)), 200, 'member cannot see activity'), []);
 }
 console.log('PASS: activity entries remain private');
+
+const survivorProfile = 'rest/v1/survivor_profiles?select=display_name,symptoms';
+expect(await api('auth/v1/logout?scope=local', { ...auth('survivor'), method: 'POST' }), 204, 'survivor sign-out');
+assert.deepEqual(expect(await api(survivorProfile, auth('new-survivor')), 200, 'new survivor starts without a profile'), []);
+assert.deepEqual(expect(await api('rest/v1/circles?select=id', auth('new-survivor')), 200, 'new survivor starts without a circle'), []);
+const returning = expect(await api('auth/v1/token?grant_type=password', {
+  body: { email: people.survivor.email, password }
+}), 200, 'sign back in');
+assert.equal(returning.user.id, people.survivor.id);
+people.survivor.token = returning.access_token;
+assert.deepEqual(expect(await api(survivorProfile, auth('survivor')), 200, 'returning survivor profile'), [
+  { display_name: profile.display_name, symptoms: profile.symptoms }
+]);
+assert.deepEqual(expect(await api('rest/v1/circles?select=id', auth('survivor')), 200, 'returning survivor circle'), [{ id: circle }]);
+console.log('PASS: a new survivor starts fresh and a returning survivor keeps their saved setup');
 
 for (const role of roles) {
   expect(await api('auth/v1/logout?scope=local', { ...auth(role), method: 'POST' }), 204, `${role} sign-out`);

@@ -160,14 +160,18 @@ private enum SessionKeychain {
     private func token() async throws -> String {
         guard let session else { throw DemoError.invalid("Sign in first.") }
         if session.expires_at > Date().timeIntervalSince1970 + 60 { return session.access_token }
-        if let refreshTask { return try await refreshTask.value.access_token }
         let expected = sessionEpoch
+        if let refreshTask {
+            let refreshed = try await refreshTask.value
+            guard sessionEpoch == expected else { throw CancellationError() }
+            return refreshed.access_token
+        }
         let task = Task { () throws -> CloudSession in
             let data = try await request("auth/v1/token?grant_type=refresh_token", method: "POST", body: ["refresh_token": session.refresh_token], authenticated: false)
             return try JSONDecoder().decode(CloudSession.self, from: data)
         }
         refreshTask = task
-        defer { refreshTask = nil }
+        defer { if sessionEpoch == expected { refreshTask = nil } }
         let updated = try await task.value
         guard sessionEpoch == expected, let config else { throw CancellationError() }
         try SessionKeychain.save(updated, config.url.absoluteString); self.session = updated
@@ -177,14 +181,20 @@ private enum SessionKeychain {
                          bytes: Data? = nil, mime: String = "application/json", representation: Bool = false,
                          conflictResolution: String? = nil) async throws -> Data {
         guard let config, let url = URL(string: path, relativeTo: config.url.appendingPathComponent("/")) else { throw DemoError.invalid("Configure a new backend first.") }
+        let expected = sessionEpoch
         var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = 30
         request.setValue(config.key, forHTTPHeaderField: "apikey")
-        if authenticated { request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization") }
+        if authenticated {
+            let credential = try await token()
+            guard sessionEpoch == expected else { throw CancellationError() }
+            request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue(mime, forHTTPHeaderField: "Content-Type")
         let returnPreference = representation ? "return=representation" : "return=minimal"
         request.setValue(conflictResolution.map { "resolution=\($0)," + returnPreference } ?? returnPreference, forHTTPHeaderField: "Prefer")
         request.httpBody = try body.map { try JSONSerialization.data(withJSONObject: $0) } ?? bytes
         let (data, response) = try await network.data(for: request)
+        guard !authenticated || sessionEpoch == expected else { throw CancellationError() }
         guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
             let details = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             if path == "rest/v1/rpc/invite_member", config.isHostedDemo,
@@ -202,16 +212,19 @@ private enum SessionKeychain {
     }
     func signUp(email: String, password: String, role: DemoRole) async throws {
         if config?.isHostedDemo == true {
+            let expected = sessionEpoch
             let address = try DemoAccount.email(for: email)
             _ = try await request("functions/v1/demo-signup", method: "POST", body: [
                 "username": DemoAccount.username(for: address), "password": password, "role": role.rawValue
             ], authenticated: false)
+            guard sessionEpoch == expected else { throw CancellationError() }
             try await authenticate(email: address, password: password, newRole: nil)
         } else {
             try await authenticate(email: email, password: password, newRole: role)
         }
     }
     private func authenticate(email: String, password: String, newRole: DemoRole?) async throws {
+        guard session == nil else { throw DemoError.invalid("Sign out before switching accounts.") }
         sessionEpoch = UUID()
         let expected = sessionEpoch
         clearVisibleData(); circles = []; circleID = nil
@@ -334,13 +347,17 @@ private enum SessionKeychain {
         return id.map { path + "&id=eq.\($0.uuidString)" } ?? path
     }
     func signOut() async {
+        do { if let config { try SessionKeychain.remove(config.url.absoluteString) } }
+        catch { message = error.localizedDescription; return }
         sessionEpoch = UUID()
         let credential = session?.access_token
         clearVisibleData(); refreshTask?.cancel(); refreshTask = nil; session = nil; circles = []; circleID = nil
-        do { if let config { try SessionKeychain.remove(config.url.absoluteString) } }
-        catch { message = error.localizedDescription }
+        message = nil
         if let credential, let config, let url = URL(string: "auth/v1/logout?scope=local", relativeTo: config.url.appendingPathComponent("/")) {
-            var request = URLRequest(url: url); request.httpMethod = "POST"; request.setValue(config.key, forHTTPHeaderField: "apikey"); request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
+            var request = URLRequest(url: url, timeoutInterval: 10)
+            request.httpMethod = "POST"
+            request.setValue(config.key, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(credential)", forHTTPHeaderField: "Authorization")
             _ = try? await network.data(for: request)
         }
     }

@@ -16,9 +16,22 @@ private final class OfflineRegressionProtocol: URLProtocol {
         guard !Self.isOffline() else { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)); return }
         let circle = "00000000-0000-4000-8000-000000000001"
         let invitedCircle = "00000000-0000-4000-8000-000000000004"
-        let user = "00000000-0000-4000-8000-000000000002"
+        let user = Self.returningSurvivorID
         let payload: Any
         switch request.url?.path {
+        case "/auth/v1/token":
+            let body = try? JSONDecoder().decode([String: String].self, from: requestBody())
+            let address = body?["email"] ?? ""
+            let isNew = address == "new@example.test"
+            payload = ["access_token": isNew ? "new-test-token" : "returning-test-token", "refresh_token": "test-refresh-token",
+                       "expires_at": Date().timeIntervalSince1970 + 3600,
+                       "user": ["id": isNew ? Self.newSurvivorID : user, "email": address, "user_metadata": ["steady_role": "survivor"]]] as [String: Any]
+        case "/auth/v1/logout": payload = NSNull()
+        case "/rest/v1/survivor_profiles":
+            let isReturning = request.url?.query?.lowercased().contains(user.lowercased()) == true &&
+                request.value(forHTTPHeaderField: "Authorization") == "Bearer returning-test-token"
+            payload = isReturning ? [["display_name": "Fictional Alex", "injury_description": "", "injury_notes": "", "symptoms": [Any]()]] as [[String: Any]] : []
+        case "/rest/v1/circles" where request.value(forHTTPHeaderField: "Authorization") == "Bearer new-test-token": payload = [Any]()
         case "/rest/v1/circles": payload = [
             ["id": circle, "name": "Fictional circle", "owner_id": user],
             ["id": invitedCircle, "name": "Another fictional circle", "owner_id": user]
@@ -47,9 +60,58 @@ private final class OfflineRegressionProtocol: URLProtocol {
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
     override func stopLoading() {}
+
+    private func requestBody() -> Data {
+        if let data = request.httpBody { return data }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 512)
+        while true {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { return data }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+    }
+
+    static let returningSurvivorID = "00000000-0000-4000-8000-000000000002"
+    static let newSurvivorID = "00000000-0000-4000-8000-000000000007"
 }
 
 final class CloudClientTests: XCTestCase {
+    @MainActor func testSignOutAndSwitchingSurvivorsReadsEachAccountsOwnSetup() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OfflineRegressionProtocol.self]
+        let network = URLSession(configuration: configuration)
+        defer { network.invalidateAndCancel() }
+        let config = BackendConfig(url: URL(string: "https://\(UUID().uuidString).invalid")!, key: "sb_publishable_TEST_PLACEHOLDER")
+        let client = CloudClient(config: config, network: network)
+
+        try await client.signIn(email: "returning@example.test", password: "fictional-password")
+        let firstProfile = try await client.loadSurvivorProfile()
+        XCTAssertEqual(firstProfile?.display_name, "Fictional Alex")
+        XCTAssertFalse(client.records.isEmpty)
+
+        await client.signOut()
+        XCTAssertNil(client.session)
+        XCTAssertNil(client.circleID)
+        XCTAssertTrue(client.records.isEmpty)
+        XCTAssertNil(CloudClient(config: config, network: network).session)
+
+        try await client.signIn(email: "new@example.test", password: "fictional-password")
+        XCTAssertEqual(client.session?.user.id.uuidString, OfflineRegressionProtocol.newSurvivorID)
+        let newProfile = try await client.loadSurvivorProfile()
+        XCTAssertNil(newProfile)
+        XCTAssertTrue(client.circles.isEmpty)
+
+        await client.signOut()
+        try await client.signIn(email: "returning@example.test", password: "fictional-password")
+        let returningProfile = try await client.loadSurvivorProfile()
+        XCTAssertEqual(returningProfile, firstProfile)
+        await client.signOut()
+    }
+
     func testAccountRoleDecodesWithExistingAndNewSessions() throws {
         let decoder = JSONDecoder()
         let account = """

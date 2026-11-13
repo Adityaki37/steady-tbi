@@ -22,10 +22,19 @@ struct AccountView: View {
     @State private var invitationToken = ""
     @State private var acceptToken = ""
     @State private var joiningAnotherCircle = false
-    @State private var showingSurvivorProfile = false
-    @State private var survivorProfile: SurvivorProfile?
-    @State private var promptedSurvivor: UUID?
+    @State private var profileEditor: ProfileEditor?
+    @State private var setupErrorFor: UUID?
+    @State private var setupRetry = UUID()
     private var hostedDemo: Bool { client.config?.isHostedDemo == true }
+    private struct ProfileEditor: Identifiable {
+        let id: UUID
+        let profile: SurvivorProfile?
+    }
+    private struct SetupCheck: Equatable {
+        let userID: UUID?
+        let role: DemoRole?
+        let retry: UUID
+    }
     var body: some View {
         NavigationStack {
             Form {
@@ -34,7 +43,7 @@ struct AccountView: View {
                 else {
                     accountSection
                     circlesSection
-                    if client.circles.isEmpty { joinSection }
+                    if client.circles.isEmpty, client.session?.user.profileRole != nil { joinSection }
                     if client.circleID != nil {
                         if client.role == "survivor" {
                             Section(secondary: "Sharing") {
@@ -74,8 +83,9 @@ struct AccountView: View {
                             }
                     }
                 }
-                .sheet(isPresented: $showingSurvivorProfile, onDismiss: { survivorProfile = nil }) {
-                    SurvivorProfileView(profile: survivorProfile) { profile in
+                .sheet(item: $profileEditor) { editor in
+                    SurvivorProfileView(profile: editor.profile) { profile in
+                        guard client.session?.user.id == editor.id else { throw CancellationError() }
                         try await client.saveSurvivorProfile(profile)
                     }
                 }
@@ -99,31 +109,32 @@ struct AccountView: View {
                 .onChange(of: client.role) { _, role in
                     if let role, let assigned = DemoRole(rawValue: role) { kind = assigned.contribution }
                 }
-                .onChange(of: client.session?.user.id) { _, newValue in
-                    editing = nil; editor = false; preview = nil; invitationToken = ""
-                    if newValue == nil {
-                        promptedSurvivor = nil
-                        showingSurvivorProfile = false
-                        survivorProfile = nil
-                    }
-                    if newValue != nil {
-                        profileRole = nil
-                        push.requestAuthorizationAndRegister()
-                        Task { await registerPushTokenIfPossible() }
-                    }
-                }
                 .onChange(of: push.deviceToken) { _, _ in Task { await registerPushTokenIfPossible() } }
         }
-        .task(id: client.session?.user.profileRole == .survivor ? client.session?.user.id : nil) {
-            guard client.session?.user.profileRole == .survivor,
-                  let id = client.session?.user.id, promptedSurvivor != id else { return }
+        .id(client.session?.user.id)
+        .onChange(of: client.session?.user.id) { _, userID in
+            editing = nil; editor = false; preview = nil; deleting = nil; importing = false
+            joiningAnotherCircle = false; acceptToken = ""; inviteEmail = ""; invitationToken = ""
+            inviteRole = .caregiver; kind = client.role.flatMap(DemoRole.init(rawValue:))?.contribution ?? .symptoms
+            profileRole = nil
+            if profileEditor?.id != userID { profileEditor = nil }
+            if setupErrorFor != userID { setupErrorFor = nil }
+            if userID != nil {
+                push.requestAuthorizationAndRegister()
+                Task { await registerPushTokenIfPossible() }
+            }
+        }
+        .task(id: SetupCheck(userID: client.session?.user.id, role: client.session?.user.profileRole, retry: setupRetry)) {
+            guard client.session?.user.profileRole == .survivor, let id = client.session?.user.id else { return }
             do {
                 let profile = try await client.loadSurvivorProfile()
                 guard !Task.isCancelled, client.session?.user.id == id else { return }
-                promptedSurvivor = id
-                if profile == nil && !showingSurvivorProfile { showingSurvivorProfile = true }
+                setupErrorFor = nil
+                if profile == nil && profileEditor == nil { profileEditor = ProfileEditor(id: id, profile: nil) }
+            } catch is CancellationError {
             } catch {
-                // The Account button also lets the survivor retry after reconnecting.
+                guard !Task.isCancelled, client.session?.user.id == id else { return }
+                setupErrorFor = id
             }
         }
         .task {
@@ -200,12 +211,19 @@ struct AccountView: View {
             if let accountRole = client.session?.user.profileRole {
                 LabeledContent("Account role", value: accountRole.title)
                 if accountRole == .survivor {
+                    if let setupErrorFor, setupErrorFor == client.session?.user.id {
+                        Text("Couldn’t check your survivor setup. Try again when you’re connected.")
+                            .font(.footnote).foregroundStyle(Palette.secondaryText)
+                        Button("Retry setup") { self.setupErrorFor = nil; setupRetry = UUID() }
+                    }
                     Button("Survivor profile") {
                         Task {
                             await perform {
-                                survivorProfile = try await client.loadSurvivorProfile()
-                                promptedSurvivor = client.session?.user.id
-                                showingSurvivorProfile = true
+                                guard let id = client.session?.user.id else { return }
+                                let profile = try await client.loadSurvivorProfile()
+                                guard client.session?.user.id == id else { return }
+                                setupErrorFor = nil
+                                profileEditor = ProfileEditor(id: id, profile: profile)
                             }
                         }
                     }.disabled(busy)
@@ -217,13 +235,14 @@ struct AccountView: View {
                     }
                 }
             } else {
+                Text("Choose your role to finish setting up this account.").font(.footnote)
                 profileRolePicker("Account role")
                 Button("Save account role") {
                     Task { await perform { if let profileRole { try await client.saveProfileRole(profileRole) } } }
                 }.disabled(busy || profileRole == nil)
             }
             Button("Sign out", role: .destructive) {
-                invitationToken = ""; acceptToken = ""; password = ""; preview = nil; profileRole = nil; creating = false
+                email = ""; password = ""; creating = false
                 Task { await client.signOut() }
             }
         }
@@ -240,7 +259,7 @@ struct AccountView: View {
                 Button("Join another circle") { joiningAnotherCircle = true }.disabled(busy)
             }
             if let role = client.role { LabeledContent("Role in this circle", value: role.capitalized) }
-            if (client.session?.user.profileRole == .survivor || client.session?.user.profileRole == nil),
+            if client.session?.user.profileRole == .survivor,
                !client.circles.contains(where: { $0.owner_id == client.session?.user.id }) {
                 Button("Create my circle") { Task { await perform { try await client.createCircle() } } }.disabled(busy)
             }

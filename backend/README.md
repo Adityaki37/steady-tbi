@@ -4,7 +4,7 @@ The app bundles the URL and publishable key for the **Steady Demo** Supabase pro
 
 The owner can check or restore the project from [Supabase Dashboard](https://supabase.com/dashboard/project/sipqoeqvwkaljqifddxd). Use fictional records. Demo accounts have no email delivery or password recovery. Remote APNs is pending, and in-app check-ins sync on refresh.
 
-Hosted smoke tests are in `test-tools/hosted-demo.e2e.mjs`. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` and run it with Node 22 or later. It creates three synthetic accounts and logs out their sessions after testing. It prints their IDs for targeted cleanup.
+Hosted smoke tests are in `test-tools/hosted-demo.e2e.mjs`. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` and run it with Node 22 or later. It creates four synthetic accounts to exercise all three roles and test switching between survivors. It signs them out and prints their IDs for targeted cleanup.
 
 ## Architecture
 
