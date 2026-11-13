@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.macOS(.v13), .iOS(.v17)],
     products: [.library(name: "SteadyCore", targets: ["SteadyCore"])],
     targets: [
-        .target(name: "SteadyCore", path: "Steady", exclude: ["AppStore.swift", "SteadyApp.swift", "ContentView.swift", "CloudClient.swift", "AccountView.swift", "SteadyResources", "Assets.xcassets"], sources: ["Domain.swift"]),
+        .target(name: "SteadyCore", path: "Steady", exclude: ["AppStore.swift", "SteadyApp.swift", "ContentView.swift", "CloudClient.swift", "AccountView.swift", "SurvivorProfileView.swift", "SteadyResources", "Assets.xcassets"], sources: ["Domain.swift"]),
         .testTarget(name: "SteadyCoreTests", dependencies: ["SteadyCore"], path: "Tests")
     ]
 )

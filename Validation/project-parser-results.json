@@ -1,8 +1,8 @@
 {
   "status": "PASS",
-  "parser": "xcode npm 3.0.1",
+  "parser": "xcode npm 4.0.0",
   "target": "Steady",
-  "appSwiftSources": 5,
+  "appSwiftSources": 6,
   "appHostedTestTarget": "SteadyAppTests",
   "scope": "OpenStep project parse and target structure only; not Xcode build"
 }

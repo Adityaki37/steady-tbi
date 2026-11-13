@@ -1,5 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
@@ -49,7 +49,9 @@ try {
     grant select,insert,update,delete on storage.objects to authenticated;
   `);
   for (const [name, uuid] of Object.entries(users)) await db.query('insert into auth.users values ($1,$2,$3)', [uuid, `${name}@example.test`, name === 'unconfirmed' ? null : '2026-10-28T12:00:00Z']);
-  const schema = await readFile(new URL('../backend/schema.sql', import.meta.url), 'utf8');
+  const migrationDirectory = new URL('../supabase/migrations/', import.meta.url);
+  const migrations = (await readdir(migrationDirectory)).filter(name => name.endsWith('.sql')).sort();
+  const schema = (await Promise.all(migrations.map(name => readFile(new URL(name, migrationDirectory), 'utf8')))).join('\n');
   await db.exec(schema);
   console.log('PASS: migration applies in PostgreSQL (PGlite)');
   const circle = (await as('survivor', "select public.create_circle('Fictional Alex') as id")).rows[0].id;
@@ -65,6 +67,18 @@ try {
   await denied('anon', "select public.create_circle('No account')");
   await denied('caregiver', 'select public.invite_member($1,$2,$3)', [circle, 'outsider@example.test', 'clinician']);
   await denied('caregiver', 'insert into public.circle_members values($1,$2,$3)', [circle, users.outsider, 'clinician']);
+  const ranked = [{category: 'cognitive', name: 'Mental fatigue'}, {category: 'balance', name: 'Dizziness'}];
+  await as('survivor', "insert into public.survivor_profiles(user_id,display_name,injury_date,symptoms) values($1,'Fictional survivor','2025-06-20',$2)", [users.survivor, JSON.stringify(ranked)]);
+  check((await as('survivor', 'select symptoms from public.survivor_profiles')).rows[0].symptoms, ranked, 'profile preserves symptom order');
+  for (const role of ['caregiver', 'clinician']) {
+    check((await as(role, 'select * from public.survivor_profiles')).rows.length, 0, 'circle member cannot read private profile');
+    check((await as(role, "update public.survivor_profiles set display_name='Changed' returning user_id")).rows.length, 0, 'circle member cannot edit private profile');
+    await denied(role, "insert into public.survivor_profiles(user_id,display_name) values($1,'Changed')", [users.survivor]);
+  }
+  await denied('anon', 'select * from public.survivor_profiles');
+  await as('survivor', 'update public.survivor_profiles set injury_date=null, symptoms=$1', [JSON.stringify(ranked.toReversed())]);
+  check((await as('survivor', 'select injury_date,symptoms from public.survivor_profiles')).rows[0],
+    {injury_date: null, symptoms: ranked.toReversed()}, 'survivor can clear date and save a new order');
   check((await as('caregiver','select * from public.circle_permissions where circle_id=$1',[circle])).rows.length,0,'shared role cannot read owner control rows');
   check((await as('outsider','select * from public.circles where id=$1',[circle])).rows.length,0,'cross-circle isolation');
   const tokenUnconfirmed = (await as('survivor','select public.invite_member($1,$2,$3) as token',[circle,'unconfirmed@example.test','caregiver'])).rows[0].token;

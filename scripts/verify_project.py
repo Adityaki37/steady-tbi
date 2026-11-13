@@ -20,7 +20,7 @@ references=set(re.findall(r'\b[A-F0-9]{24}\b',pbx))
 require(references==set(definitions), 'All Xcode object references resolve')
 require(pbx.count('productType = "com.apple.product-type.application"')==1 and pbx.count('isa = PBXNativeTarget;')==3, 'One iOS app target, one app-hosted unit test target and one UI test target')
 require('XCLocalSwiftPackageReference' in pbx and 'productName = SteadyCore' in pbx, 'Local Swift package linked')
-for file in ['SteadyApp.swift','AppStore.swift','ContentView.swift','CloudClient.swift','AccountView.swift']:
+for file in ['SteadyApp.swift','AppStore.swift','ContentView.swift','CloudClient.swift','AccountView.swift','SurvivorProfileView.swift']:
     require((ROOT/'Steady'/file).is_file() and f'path = {file};' in pbx, f'Swift source exists and is referenced: {file}')
 scheme=ET.parse(ROOT/'Steady.xcodeproj/xcshareddata/xcschemes/Steady.xcscheme')
 require(pbx.count('productType = "com.apple.product-type.bundle.ui-testing"')==1 and 'name = SteadyUITests;' in pbx and 'TEST_TARGET_NAME = Steady;' in pbx, 'SteadyUITests UI testing target targets the Steady app')
@@ -46,17 +46,19 @@ require('Steady/SteadyResources/Backend.local.plist' in (ROOT/'.gitignore').read
 image=ROOT/'Steady/SteadyResources/Fictional-brain-MRI.png'
 raw=image.read_bytes()
 require(raw[:8]==b'\x89PNG\r\n\x1a\n' and struct.unpack('>II',raw[16:24])==(1200,1400), 'Fictional MRI PNG has expected format and dimensions')
-sql=(ROOT/'backend/schema.sql').read_text()
+migration_dir=ROOT/'supabase/migrations'
+migrations=sorted(migration_dir.glob('*.sql'))
+sql='\n'.join(file.read_text() for file in migrations)
 tables=re.findall(r'create table public\.(\w+)',sql)
-require(len(tables)==7,'Seven backend tables declared')
+require(len(tables)==8,'Eight backend tables declared')
 for table in tables: require(f'alter table public.{table} enable row level security;' in sql,f'RLS enabled: {table}')
 require("with check(private.allowed(circle_id,kind,'edit'))" in sql, 'UPDATE has a WITH CHECK authorization clause')
 require('user_metadata' not in sql.replace('-- never user_metadata or a client-selected role.',''), 'No user-editable metadata authorization')
 require("false,15728640,array" in sql, 'Private storage bucket has a 15 MB limit')
-migrations=list((ROOT/'supabase/migrations').glob('*_steady_initial.sql'))
-require(len(migrations)==1 and migrations[0].read_bytes()==(ROOT/'backend/schema.sql').read_bytes(), 'CLI-created migration matches schema source exactly')
+initial=list(migration_dir.glob('*_steady_initial.sql'))
+require(len(initial)==1 and initial[0].read_bytes()==(ROOT/'backend/schema.sql').read_bytes(), 'Initial migration matches the reference schema exactly')
 require((ROOT/'Tests/DemoRepositoryTests.swift').read_text().count('func test')==7,'Seven core Swift tests supplied (not executed here)')
-digest=hashlib.sha256((ROOT/'backend/schema.sql').read_bytes()).hexdigest()
+digest=hashlib.sha256(sql.encode()).hexdigest()
 result={'status':'PASS','checks':len(checks),'details':checks,'schemaSHA256':digest,'scope':'Structural source/project/asset checks only. Not Swift compilation, XCTest execution, or device validation.'}
 (ROOT/'Validation').mkdir(exist_ok=True)
 (ROOT/'Validation/source-results.json').write_text(json.dumps(result,indent=2)+'\n')

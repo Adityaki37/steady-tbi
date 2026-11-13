@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "checks": 41,
+  "checks": 43,
   "details": [
     "Unique Xcode object identifiers",
     "All Xcode object references resolve",
@@ -11,6 +11,7 @@
     "Swift source exists and is referenced: ContentView.swift",
     "Swift source exists and is referenced: CloudClient.swift",
     "Swift source exists and is referenced: AccountView.swift",
+    "Swift source exists and is referenced: SurvivorProfileView.swift",
     "SteadyUITests UI testing target targets the Steady app",
     "UI test source exists and is referenced",
     "Shared scheme TestAction includes SteadyUITests",
@@ -30,7 +31,7 @@
     "Only public client config keys in template",
     "Per-machine backend configuration is gitignored",
     "Fictional MRI PNG has expected format and dimensions",
-    "Seven backend tables declared",
+    "Eight backend tables declared",
     "RLS enabled: circles",
     "RLS enabled: circle_members",
     "RLS enabled: circle_permissions",
@@ -38,12 +39,13 @@
     "RLS enabled: circle_invitations",
     "RLS enabled: check_ins",
     "RLS enabled: device_tokens",
+    "RLS enabled: survivor_profiles",
     "UPDATE has a WITH CHECK authorization clause",
     "No user-editable metadata authorization",
     "Private storage bucket has a 15 MB limit",
-    "CLI-created migration matches schema source exactly",
+    "Initial migration matches the reference schema exactly",
     "Seven core Swift tests supplied (not executed here)"
   ],
-  "schemaSHA256": "7f08c5f3e30c6f15973cd169c6dbacff339f7daf4825ad33aeba3058722917ff",
+  "schemaSHA256": "25d2df37d1e33a7408c07be3959de0ad1f8a9c99b29eaa85ccb3e260703dd626",
   "scope": "Structural source/project/asset checks only. Not Swift compilation, XCTest execution, or device validation."
 }

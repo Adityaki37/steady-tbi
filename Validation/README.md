@@ -4,9 +4,9 @@ Mac verification used Apple silicon, Xcode 27.2, an iPhone 18 Pro simulator runn
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| PostgreSQL schema + RLS test | PASS — see `backend-results.json` | 1,097 assertions; all 128 role/type/CRUD combinations; invitations, isolation, add-only writes, storage policies, check-ins, revocation |
+| PostgreSQL schema + RLS test | PASS — see `backend-results.json` | 1,106 assertions covering all 128 role/type/CRUD combinations, invitations, isolation, add-only writes, storage policies, check-ins, revocation, and private survivor profiles |
 | Portable structural checks | PASS — see `source-results.json` | Project references, assets, scheme XML, config template, RLS declarations and exact migration/source match |
-| OpenStep Xcode project parser | PASS — see `project-parser-results.json` | Project file parses; native app/test targets and five app source files |
+| OpenStep Xcode project parser | PASS — see `project-parser-results.json` | Project file parses with native app and test targets and six app source files |
 | Swift grammar parser | PASS — see `swift-syntax-results.json` | Nine Swift source/manifest/test files parse without grammar errors |
 | Swift compiler/type checking | PASS | Xcode built the app and both test targets |
 | Seven Swift core XCTest methods | PASS | Permissions, persistence, reset and recovery |
@@ -15,9 +15,10 @@ Mac verification used Apple silicon, Xcode 27.2, an iPhone 18 Pro simulator runn
 | Free Personal Team signing / iPhone run | **NOT RUN** | Requires user’s Mac, Apple sign-in and connected iPhone |
 | Simulator UI tests (`SteadyUITests`, local demo mode) | PASS for two selected flows | Caregiver observation, private history and check-ins. Files tab and [fictional MRI preview](steady-file-preview-simulator.png). |
 | Simulator accessibility audit (`testAccessibilityAudit`, `performAccessibilityAudit`) | **CI-configured, not run here** | `ios-build.yml` on macos-15; results in log markers `A11Y_ISSUE` and `A11Y_TEST_EXIT` |
-| `scripts/run-on-mac.sh` (simulator build, install, launch) | **CI-configured, not run here** | `ios-build.yml` on macos-15; result in log marker `RUN_ON_MAC_EXIT`. On Linux it only exits 0 with a message |
-| Live local Supabase HTTP flow (`test-tools/live-stack.e2e.mjs`) | PASS | 53 checks against real Auth, PostgREST and Storage services |
+| `scripts/run-on-mac.sh` (simulator build, install, launch) | PASS | Built, installed, and launched the app on the Mac's iPhone Simulator |
+| Live local Supabase HTTP flow (`test-tools/live-stack.e2e.mjs`) | PASS | 56 checks against real Auth, PostgREST and Storage services |
 | Native Swift client with local Supabase | PASS | Three fictional accounts, invitations, private history, break prompt, clinician upload and download, member removal, and Keychain session restore |
+| Survivor onboarding in Simulator | PASS | Entered a fictional name and injury, selected symptoms, reordered them, saved, and reopened the profile to verify the details and order |
 | Remote APNs push delivery | **NOT RUN** | Needs a paid Apple Developer account, APNs key and a real device |
 | Two-device and accessibility UI acceptance | **NOT RUN** | Follow `MANUAL_TESTS.md` |
 

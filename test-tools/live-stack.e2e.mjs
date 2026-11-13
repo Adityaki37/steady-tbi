@@ -195,6 +195,37 @@ await check('changing a profile role leaves the survivor-assigned role and permi
   ok(after);
   assert.deepEqual(after.json, before.json);
 });
+await check('survivor can save and reorder a private profile that circle members cannot read or overwrite', async () => {
+  const path = 'rest/v1/survivor_profiles';
+  const user_id = people.survivor.id;
+  const symptoms = [
+    { id: randomUUID(), category: 'cognitive', name: 'Mental fatigue' },
+    { id: randomUUID(), category: 'balance', name: 'Feeling unsteady' }
+  ];
+  const profile = {
+    user_id, display_name: 'Fictional survivor', injury_date: '2025-06-20',
+    injury_description: 'Fictional concussion', injury_notes: '', symptoms
+  };
+  const upsert = (token, body) => api(path + '?on_conflict=user_id', {
+    token, body, method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal'
+  });
+  const read = token => api(path + '?user_id=eq.' + user_id, { token });
+  emptyRows(await read(T('survivor')), 'new profile starts empty');
+  ok(await upsert(T('survivor'), profile), 'save profile');
+  const saved = await read(T('survivor'));
+  ok(saved);
+  assert.deepEqual(saved.json, [profile]);
+  for (const role of ['caregiver', 'clinician']) {
+    emptyRows(await read(T(role)), 'private profile');
+    denied(await upsert(T(role), { ...profile, display_name: 'Invalid edit' }), 'other account upsert');
+  }
+  denied(await read(undefined), 'anonymous profile read');
+  const updated = { ...profile, injury_date: null, symptoms: symptoms.toReversed() };
+  ok(await upsert(T('survivor'), updated), 'update profile');
+  const result = await read(T('survivor'));
+  ok(result);
+  assert.deepEqual(result.json, [updated]);
+});
 await check('an unconfirmed account cannot sign in or accept an invitation', async () => {
   const t = await rpc('invite_member', T('survivor'), { c: circle, email: people.unconfirmed.email, r: 'caregiver' });
   ok(t);

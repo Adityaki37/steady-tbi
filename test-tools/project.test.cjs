@@ -15,6 +15,6 @@ assert.ok(ui);
 assert.equal(ui.productType,'"com.apple.product-type.bundle.ui-testing"');
 assert.ok(fs.readFileSync(path.resolve(__dirname,'../Steady.xcodeproj/xcshareddata/xcschemes/Steady.xcscheme'),'utf8').includes('BlueprintName="SteadyUITests"'));
 const sourcePhase=app.buildPhases.map(id=>objects.PBXSourcesBuildPhase[id]).find(Boolean);
-assert.equal(sourcePhase.files.length,5);
-fs.writeFileSync(path.resolve(__dirname,'../Validation/project-parser-results.json'),JSON.stringify({status:'PASS',parser:'xcode npm 3.0.1',target:'Steady',appSwiftSources:5,appHostedTestTarget:'SteadyAppTests',scope:'OpenStep project parse and target structure only; not Xcode build'},null,2)+'\n');
+assert.equal(sourcePhase.files.length,6);
+fs.writeFileSync(path.resolve(__dirname,'../Validation/project-parser-results.json'),JSON.stringify({status:'PASS',parser:'xcode npm 4.0.0',target:'Steady',appSwiftSources:sourcePhase.files.length,appHostedTestTarget:'SteadyAppTests',scope:'OpenStep project parse and target structure only; not Xcode build'},null,2)+'\n');
 console.log('PASS: Xcode project parsed, native app and regression test targets verified.');

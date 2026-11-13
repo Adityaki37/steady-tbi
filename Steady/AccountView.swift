@@ -22,6 +22,9 @@ struct AccountView: View {
     @State private var invitationToken = ""
     @State private var acceptToken = ""
     @State private var joiningAnotherCircle = false
+    @State private var showingSurvivorProfile = false
+    @State private var survivorProfile: SurvivorProfile?
+    @State private var promptedSurvivor: UUID?
     var body: some View {
         NavigationStack {
             Form {
@@ -65,6 +68,11 @@ struct AccountView: View {
                             }
                     }
                 }
+                .sheet(isPresented: $showingSurvivorProfile, onDismiss: { survivorProfile = nil }) {
+                    SurvivorProfileView(profile: survivorProfile) { profile in
+                        try await client.saveSurvivorProfile(profile)
+                    }
+                }
                 .fileImporter(isPresented: $importing, allowedContentTypes: [.png,.jpeg,.pdf], allowsMultipleSelection: false) { result in
                     Task { await perform { if let file = try result.get().first { try await client.upload(file) } } }
                 }
@@ -87,6 +95,11 @@ struct AccountView: View {
                 }
                 .onChange(of: client.session?.user.id) { _, newValue in
                     editing = nil; editor = false; preview = nil; invitationToken = ""
+                    if newValue == nil {
+                        promptedSurvivor = nil
+                        showingSurvivorProfile = false
+                        survivorProfile = nil
+                    }
                     if newValue != nil {
                         profileRole = nil
                         push.requestAuthorizationAndRegister()
@@ -94,6 +107,18 @@ struct AccountView: View {
                     }
                 }
                 .onChange(of: push.deviceToken) { _, _ in Task { await registerPushTokenIfPossible() } }
+        }
+        .task(id: client.session?.user.profileRole == .survivor ? client.session?.user.id : nil) {
+            guard client.session?.user.profileRole == .survivor,
+                  let id = client.session?.user.id, promptedSurvivor != id else { return }
+            do {
+                let profile = try await client.loadSurvivorProfile()
+                guard !Task.isCancelled, client.session?.user.id == id else { return }
+                promptedSurvivor = id
+                if profile == nil && !showingSurvivorProfile { showingSurvivorProfile = true }
+            } catch {
+                // The Account button also lets the survivor retry after reconnecting.
+            }
         }
         .task {
             if client.session != nil {
@@ -164,6 +189,17 @@ struct AccountView: View {
             Text(client.session?.user.email ?? "Signed in")
             if let accountRole = client.session?.user.profileRole {
                 LabeledContent("Account role", value: accountRole.title)
+                if accountRole == .survivor {
+                    Button("Survivor profile") {
+                        Task {
+                            await perform {
+                                survivorProfile = try await client.loadSurvivorProfile()
+                                promptedSurvivor = client.session?.user.id
+                                showingSurvivorProfile = true
+                            }
+                        }
+                    }.disabled(busy)
+                }
             } else {
                 profileRolePicker("Account role")
                 Button("Save account role") {

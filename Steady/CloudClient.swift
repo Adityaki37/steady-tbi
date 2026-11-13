@@ -140,13 +140,15 @@ private enum SessionKeychain {
         return updated.access_token
     }
     private func request(_ path: String, method: String = "GET", body: Any? = nil, authenticated: Bool = true,
-                         bytes: Data? = nil, mime: String = "application/json", representation: Bool = false) async throws -> Data {
+                         bytes: Data? = nil, mime: String = "application/json", representation: Bool = false,
+                         mergeDuplicates: Bool = false) async throws -> Data {
         guard let config, let url = URL(string: path, relativeTo: config.url.appendingPathComponent("/")) else { throw DemoError.invalid("Configure a new backend first.") }
         var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = 30
         request.setValue(config.key, forHTTPHeaderField: "apikey")
         if authenticated { request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization") }
         request.setValue(mime, forHTTPHeaderField: "Content-Type")
-        request.setValue(representation ? "return=representation" : "return=minimal", forHTTPHeaderField: "Prefer")
+        let returnPreference = representation ? "return=representation" : "return=minimal"
+        request.setValue(mergeDuplicates ? "resolution=merge-duplicates," + returnPreference : returnPreference, forHTTPHeaderField: "Prefer")
         request.httpBody = try body.map { try JSONSerialization.data(withJSONObject: $0) } ?? bytes
         let (data, response) = try await network.data(for: request)
         guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
@@ -193,6 +195,28 @@ private enum SessionKeychain {
         current.user = user
         try SessionKeychain.save(current, config.url.absoluteString)
         session = current
+    }
+    func loadSurvivorProfile() async throws -> SurvivorProfile? {
+        guard let owner = session?.user.id else { throw CancellationError() }
+        let expected = sessionEpoch
+        let data = try await request("rest/v1/survivor_profiles?user_id=eq.\(owner.uuidString)&select=display_name,injury_date,injury_description,injury_notes,symptoms")
+        guard sessionEpoch == expected else { throw CancellationError() }
+        return try JSONDecoder().decode([SurvivorProfile].self, from: data).first
+    }
+    func saveSurvivorProfile(_ profile: SurvivorProfile) async throws {
+        guard let owner = session?.user.id else { throw CancellationError() }
+        let expected = sessionEpoch
+        let symptoms = try JSONSerialization.jsonObject(with: JSONEncoder().encode(profile.symptoms))
+        let body: [String: Any] = [
+            "user_id": owner.uuidString,
+            "display_name": profile.display_name,
+            "injury_date": profile.injury_date as Any? ?? NSNull(),
+            "injury_description": profile.injury_description,
+            "injury_notes": profile.injury_notes,
+            "symptoms": symptoms
+        ]
+        _ = try await request("rest/v1/survivor_profiles?on_conflict=user_id", method: "POST", body: body, mergeDuplicates: true)
+        guard sessionEpoch == expected else { throw CancellationError() }
     }
     func signOut() async {
         sessionEpoch = UUID()
