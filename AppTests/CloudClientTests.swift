@@ -19,10 +19,10 @@ private final class OfflineRegressionProtocol: URLProtocol {
         let user = Self.returningSurvivorID
         let payload: Any
         switch request.url?.path {
-        case "/auth/v1/token":
+        case "/auth/v1/token", "/auth/v1/signup":
             let body = try? JSONDecoder().decode([String: String].self, from: requestBody())
             let address = body?["email"] ?? ""
-            let isNew = address == "new@example.test"
+            let isNew = request.url?.path == "/auth/v1/signup" || address == "new@example.test"
             payload = ["access_token": isNew ? "new-test-token" : "returning-test-token", "refresh_token": "test-refresh-token",
                        "expires_at": Date().timeIntervalSince1970 + 3600,
                        "user": ["id": isNew ? Self.newSurvivorID : user, "email": address, "user_metadata": ["steady_role": "survivor"]]] as [String: Any]
@@ -99,8 +99,10 @@ final class CloudClientTests: XCTestCase {
         XCTAssertTrue(client.records.isEmpty)
         XCTAssertNil(CloudClient(config: config, network: network).session)
 
-        try await client.signIn(email: "new@example.test", password: "fictional-password")
+        try await client.signUp(email: "new@example.test", password: "fictional-password", role: .survivor)
         XCTAssertEqual(client.session?.user.id.uuidString, OfflineRegressionProtocol.newSurvivorID)
+        let restoredClient = CloudClient(config: config, network: network)
+        XCTAssertEqual(restoredClient.session?.user.id, client.session?.user.id)
         let newProfile = try await client.loadSurvivorProfile()
         XCTAssertNil(newProfile)
         XCTAssertTrue(client.circles.isEmpty)

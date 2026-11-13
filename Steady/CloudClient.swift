@@ -97,11 +97,21 @@ private enum SessionKeychain {
     static let service = "Steady.AccountSession.v1"
     static func query(_ account: String) -> [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account] }
     static func load(_ account: String) throws -> CloudSession? {
+        guard let data = try read(account) else { return nil }
+        return try JSONDecoder().decode(CloudSession.self, from: data)
+    }
+    static func checkAvailability(_ account: String) throws {
+        _ = try read(account)
+    }
+    private static func read(_ account: String) throws -> Data? {
         var q = query(account); q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
         var value: CFTypeRef?; let result = SecItemCopyMatching(q as CFDictionary, &value)
         if result == errSecItemNotFound { return nil }
+        if result == errSecMissingEntitlement {
+            throw DemoError.invalid("This build cannot access Keychain. Run Steady from Xcode or use the Mac launch script.")
+        }
         guard result == errSecSuccess, let data = value as? Data else { throw DemoError.invalid("Could not open the saved account session.") }
-        return try JSONDecoder().decode(CloudSession.self, from: data)
+        return data
     }
     static func save(_ session: CloudSession, _ account: String) throws {
         let data = try JSONEncoder().encode(session)
@@ -211,7 +221,11 @@ private enum SessionKeychain {
         try await authenticate(email: address, password: password, newRole: nil)
     }
     func signUp(email: String, password: String, role: DemoRole) async throws {
-        if config?.isHostedDemo == true {
+        guard session == nil else { throw DemoError.invalid("Sign out before switching accounts.") }
+        guard let config else { throw DemoError.invalid("Configure a new backend first.") }
+        // Check Keychain before a signup can create an account on the server.
+        try SessionKeychain.checkAvailability(config.url.absoluteString)
+        if config.isHostedDemo {
             let expected = sessionEpoch
             let address = try DemoAccount.email(for: email)
             _ = try await request("functions/v1/demo-signup", method: "POST", body: [

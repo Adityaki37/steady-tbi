@@ -28,9 +28,10 @@ echo "Simulator: $(echo "$LINE" | sed 's/^ *//') "
 xcrun simctl boot "$UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$UDID" -b
 BUILD_DIR="${STEADY_BUILD_DIR:-$HOME/Library/Developer/SteadyDerivedData}"
+# Xcode embeds the simulator app identifier needed for Keychain sessions.
 xcodebuild -project Steady.xcodeproj -scheme Steady -sdk iphonesimulator \
   -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$BUILD_DIR" \
-  CODE_SIGN_IDENTITY=- build
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
 APP="$BUILD_DIR/Build/Products/Debug-iphonesimulator/Steady.app"
 xcrun simctl install "$UDID" "$APP"
 xcrun simctl launch "$UDID" com.aditya.steadydemo
