@@ -195,7 +195,13 @@ await check('changing a profile role leaves the survivor-assigned role and permi
   ok(after);
   assert.deepEqual(after.json, before.json);
 });
-await check('survivor can save and reorder a private profile that circle members cannot read or overwrite', async () => {
+const readSharedProfile = (role, c = circle) => rpc('shared_survivor_profile', T(role), { c });
+const changeProfileSharing = (role, target, enabled) => api(
+  `rest/v1/circle_members?circle_id=eq.${circle}&user_id=eq.${people[target].id}`, {
+    method: 'PATCH', token: T(role), body: { shares_survivor_profile: enabled }, representation: true
+  }
+);
+await check('survivor can share current injury details and ranked symptoms with either member and revoke access separately', async () => {
   const path = 'rest/v1/survivor_profiles';
   const user_id = people.survivor.id;
   const symptoms = [
@@ -204,7 +210,7 @@ await check('survivor can save and reorder a private profile that circle members
   ];
   const profile = {
     user_id, display_name: 'Fictional survivor', injury_date: '2025-06-20',
-    injury_description: 'Fictional concussion', injury_notes: '', symptoms
+    injury_description: 'Fictional concussion', injury_notes: 'Fictional injury notes', symptoms
   };
   const upsert = (token, body) => api(path + '?on_conflict=user_id', {
     token, body, method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal'
@@ -218,13 +224,38 @@ await check('survivor can save and reorder a private profile that circle members
   for (const role of ['caregiver', 'clinician']) {
     emptyRows(await read(T(role)), 'private profile');
     denied(await upsert(T(role), { ...profile, display_name: 'Invalid edit' }), 'other account upsert');
+    emptyRows(await readSharedProfile(role), 'profile sharing defaults to off');
+    emptyRows(await changeProfileSharing(role, role, true), 'member cannot grant themselves profile access');
   }
   denied(await read(undefined), 'anonymous profile read');
+  denied(await rpc('shared_survivor_profile', anon, { c: circle }), 'anonymous shared profile read');
+  const caregiverGrant = await changeProfileSharing('survivor', 'caregiver', true);
+  ok(caregiverGrant); assert.equal(caregiverGrant.json[0].shares_survivor_profile, true);
+  const shareable = {
+    injury_date: profile.injury_date, injury_description: profile.injury_description,
+    injury_notes: profile.injury_notes, symptoms
+  };
+  const caregiverRead = await readSharedProfile('caregiver');
+  ok(caregiverRead); assert.deepEqual(caregiverRead.json, [shareable]);
+  emptyRows(await readSharedProfile('clinician'), 'clinician remains private');
+  emptyRows(await readSharedProfile('outsider'), 'outsider remains private');
+  emptyRows(await readSharedProfile('caregiver', randomUUID()), 'profile access is scoped to the circle');
+  emptyRows(await read(T('caregiver')), 'share leaves the full profile private');
+  ok(await changeProfileSharing('survivor', 'clinician', true), 'share with clinician too');
   const updated = { ...profile, injury_date: null, symptoms: symptoms.toReversed() };
   ok(await upsert(T('survivor'), updated), 'update profile');
   const result = await read(T('survivor'));
   ok(result);
   assert.deepEqual(result.json, [updated]);
+  const clinicianRead = await readSharedProfile('clinician');
+  ok(clinicianRead); assert.deepEqual(clinicianRead.json, [{ ...shareable, injury_date: null, symptoms: symptoms.toReversed() }]);
+  const revoked = await changeProfileSharing('survivor', 'caregiver', false);
+  ok(revoked); assert.equal(revoked.json[0].shares_survivor_profile, false);
+  emptyRows(await readSharedProfile('caregiver'), 'caregiver loses access on the same token');
+  const stillShared = await readSharedProfile('clinician');
+  ok(stillShared); assert.deepEqual(stillShared.json, clinicianRead.json);
+  ok(await changeProfileSharing('survivor', 'clinician', false), 'stop sharing with clinician');
+  emptyRows(await readSharedProfile('clinician'), 'clinician loses access on the same token');
 });
 await check('an unconfirmed account cannot sign in or accept an invitation', async () => {
   const t = await rpc('invite_member', T('survivor'), { c: circle, email: people.unconfirmed.email, r: 'caregiver' });
@@ -513,12 +544,16 @@ await check('device_tokens: own rows only, upsert via on_conflict, no cross-user
 
 // ---------------------------------------------------------------- revoke and re-invite
 await check('revoking a member removes access and cancels their pending invitations', async () => {
+  ok(await changeProfileSharing('survivor', 'caregiver', true), 'enable profile sharing before removal');
+  const profile = await readSharedProfile('caregiver');
+  ok(profile); assert.equal(profile.json.length, 1);
   const removed = await api(`rest/v1/circle_members?circle_id=eq.${circle}&user_id=eq.${people.caregiver.id}`, { method: 'DELETE', token: T('caregiver'), representation: true });
   emptyRows(removed, 'member cannot remove themselves via API');
   const del = await api(`rest/v1/circle_members?circle_id=eq.${circle}&user_id=eq.${people.caregiver.id}`, { method: 'DELETE', token: T('survivor'), representation: true });
   ok(del); assert.equal(del.json.length, 1);
   const role = await rpc('my_role', T('caregiver'), { c: circle }); assert.equal(role.json, null);
   emptyRows(await records('caregiver'), 'records after removal');
+  emptyRows(await readSharedProfile('caregiver'), 'shared profile after removal');
   rejected(await newRecord('caregiver', 'observations', 'After removal'), 'add after removal');
   rejected(await rpc('accept_invite', T('caregiver'), { token: pendingCaregiverToken }), 'pending invite cancelled');
   rejected(await rpc('accept_invite', T('caregiver'), { token: caregiverToken }), 'old token replay');
@@ -529,6 +564,7 @@ await check('re-invite after removal works and restores the caregiver role', asy
   const r = await rpc('accept_invite', T('caregiver'), { token: t.json });
   ok(r); assert.equal(r.json, circle);
   const role = await rpc('my_role', T('caregiver'), { c: circle }); assert.equal(role.json, 'caregiver');
+  emptyRows(await readSharedProfile('caregiver'), 'new membership starts with profile sharing off');
   ok(await newRecord('caregiver', 'observations', 'Fictional back again'), 'add after re-invite');
 });
 await check('a token refresh and sign-out work against the auth endpoints CloudClient uses', async () => {

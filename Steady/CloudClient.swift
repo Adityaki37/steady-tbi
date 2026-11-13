@@ -49,7 +49,12 @@ struct CloudRecord: Codable, Identifiable {
     let created_at: String; let updated_at: String
 }
 struct CloudCheckIn: Codable, Identifiable { let id: UUID; let body: String; let created_at: String }
-struct CloudMember: Codable, Identifiable { let user_id: UUID; let role: String; var id: UUID { user_id } }
+struct CloudMember: Decodable, Identifiable {
+    let user_id: UUID
+    let role: String
+    let shares_survivor_profile: Bool?
+    var id: UUID { user_id }
+}
 struct CloudInvitation: Codable, Identifiable {
     let id: UUID; let recipient_email: String; let recipient_user_id: UUID?
     let role: String; let expires_at: String; let accepted_at: String?; let revoked_at: String?
@@ -96,6 +101,7 @@ private enum SessionKeychain {
     @Published private(set) var role: String?
     @Published private(set) var permissions: [CloudPermission] = []
     @Published private(set) var records: [CloudRecord] = []
+    @Published private(set) var sharedSurvivorProfile: SharedSurvivorProfile?
     @Published private(set) var checkIns: [CloudCheckIn] = []
     @Published private(set) var members: [CloudMember] = []
     @Published private(set) var invitations: [CloudInvitation] = []
@@ -118,7 +124,10 @@ private enum SessionKeychain {
             catch { message = error.localizedDescription }
         }
     }
-    private func clearCircleData() { role = nil; permissions = []; records = []; checkIns = []; members = []; invitations = []; grants = [] }
+    private func clearCircleData() {
+        role = nil; permissions = []; records = []; checkIns = []; members = []; invitations = []; grants = []
+        sharedSurvivorProfile = nil
+    }
     func clearVisibleData() {
         generation = UUID(); clearCircleData()
         for url in temporaryFiles { try? FileManager.default.removeItem(at: url) }; temporaryFiles = []
@@ -260,8 +269,17 @@ private enum SessionKeychain {
             let newRecords = try JSONDecoder().decode([CloudRecord].self, from: recordData)
             let checkData = try await request("rest/v1/check_ins?circle_id=eq.\(id.uuidString)&order=created_at.desc&limit=25")
             let newCheckIns = try JSONDecoder().decode([CloudCheckIn].self, from: checkData)
+            var newSharedProfile: SharedSurvivorProfile?
+            if (assigned == "caregiver" || assigned == "clinician"), let user = session?.user.id {
+                let membership = try await request("rest/v1/circle_members?circle_id=eq.\(id.uuidString)&user_id=eq.\(user.uuidString)")
+                if try JSONDecoder().decode([CloudMember].self, from: membership).first?.shares_survivor_profile == true {
+                    let data = try await rpc("shared_survivor_profile", ["c": id.uuidString])
+                    newSharedProfile = try JSONDecoder().decode([SharedSurvivorProfile].self, from: data).first
+                }
+            }
             guard expected == generation, circleID == id else { return }
             role = assigned; permissions = newPermissions; records = newRecords; checkIns = newCheckIns
+            sharedSurvivorProfile = newSharedProfile
             if assigned != "survivor" { grants = []; members = []; invitations = [] }
             if assigned == "survivor" {
                 let grantData = try await request("rest/v1/circle_permissions?circle_id=eq.\(id.uuidString)&order=role,kind")
@@ -292,6 +310,17 @@ private enum SessionKeychain {
     func removeMember(_ id: UUID) async throws {
         guard let circle = circleID else { throw DemoError.missing }
         _ = try await request("rest/v1/circle_members?circle_id=eq.\(circle.uuidString)&user_id=eq.\(id.uuidString)", method: "DELETE"); try await refresh()
+    }
+    func setProfileSharing(for member: UUID, enabled: Bool) async throws {
+        guard let circle = circleID else { throw DemoError.missing }
+        let expected = sessionEpoch
+        let data = try await request("rest/v1/circle_members?circle_id=eq.\(circle.uuidString)&user_id=eq.\(member.uuidString)",
+                                     method: "PATCH", body: ["shares_survivor_profile": enabled], representation: true)
+        guard sessionEpoch == expected, circleID == circle else { return }
+        guard try JSONDecoder().decode([CloudMember].self, from: data).first?.shares_survivor_profile == enabled else {
+            throw DemoError.invalid("Couldn’t update profile sharing. Refresh shared data and try again.")
+        }
+        try await refresh()
     }
     func setGrant(_ grant: RoleGrant, action: DemoAction, value: Bool) async throws {
         guard let id = circleID else { throw DemoError.missing }

@@ -44,6 +44,42 @@ struct SurvivorProfile: Decodable, Equatable {
     }
 }
 
+struct SharedSurvivorProfile: Decodable {
+    let injury_date: String?
+    let injury_description: String
+    let injury_notes: String
+    let symptoms: [ProfileSymptom]
+}
+
+struct SharedSurvivorProfileView: View {
+    let profile: SharedSurvivorProfile
+
+    var body: some View {
+        DisclosureGroup("Injury details and ranked symptoms") {
+            VStack(alignment: .leading, spacing: 12) {
+                if let day = profile.injury_date.flatMap({ SurvivorProfile.dateFormat.date(from: $0) }) {
+                    Text("Injury date \(day.formatted(date: .long, time: .omitted))")
+                }
+                if !profile.injury_description.isEmpty { Text(profile.injury_description) }
+                if !profile.injury_notes.isEmpty { Text(profile.injury_notes) }
+                if profile.injury_date == nil && profile.injury_description.isEmpty && profile.injury_notes.isEmpty {
+                    Text("No injury details entered").foregroundStyle(Palette.secondaryText)
+                }
+                Text("Symptoms from first noticed to last").font(.headline).accessibilityAddTraits(.isHeader)
+                if profile.symptoms.isEmpty {
+                    Text("No symptoms entered").foregroundStyle(Palette.secondaryText)
+                }
+                ForEach(Array(profile.symptoms.enumerated()), id: \.element.id) { index, symptom in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(index + 1). \(symptom.name)")
+                        Text(symptom.category.title).font(.caption).foregroundStyle(Palette.secondaryText)
+                    }.accessibilityElement(children: .combine)
+                }
+            }.padding(.vertical, 8)
+        }.privacySensitive()
+    }
+}
+
 struct SurvivorProfileView: View {
     private enum Step: Int, CaseIterable {
         case details, symptoms, order
@@ -130,7 +166,7 @@ struct SurvivorProfileView: View {
                 TextField("Your name", text: $draft.display_name).textContentType(.name)
                 if name.unicodeScalars.count > 100 { Text("Use up to 100 characters.").foregroundStyle(.red) }
             } footer: {
-                Text("Use fictional details for this prototype. Only your account can see this profile.")
+                Text("Use fictional details for this prototype. You choose who can see your injury details and ranked symptoms in Manage sharing.")
             }
             Section("Your injury") {
                 Toggle("I know the injury date", isOn: Binding(

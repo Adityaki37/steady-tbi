@@ -40,6 +40,11 @@ struct AccountView: View {
                                 NavigationLink("Manage sharing") { sharingView }
                             }
                         }
+                        if let profile = client.sharedSurvivorProfile {
+                            Section("Shared survivor profile") {
+                                SharedSurvivorProfileView(profile: profile)
+                            }
+                        }
                         journalSection
                         checkInSection
                     }
@@ -251,8 +256,8 @@ struct AccountView: View {
         Form {
             if client.role == "survivor" {
                 invitationsSection
-                accessSection
                 membersSection
+                accessSection
             } else {
                 ContentUnavailableView("Sharing unavailable", systemImage: "person.crop.circle.badge.exclamationmark")
             }
@@ -343,17 +348,30 @@ struct AccountView: View {
         }
     }
     private var membersSection: some View {
-        Section(secondary: "People with access") {
+        Section {
             if client.members.isEmpty { Text("No one has joined your circle yet.").foregroundStyle(Palette.secondaryText) }
             ForEach(client.members) { member in
-                VStack(alignment: .leading) {
+                let address = client.invitations.first {
+                    $0.recipient_user_id == member.user_id && $0.accepted_at != nil
+                }?.recipient_email ?? member.user_id.uuidString
+                VStack(alignment: .leading, spacing: 10) {
                     Text(member.role.capitalized)
-                    let invitation = client.invitations.first {
-                        $0.recipient_user_id == member.user_id && $0.accepted_at != nil
+                    Text(address).font(.subheadline)
+                    if let sharing = member.shares_survivor_profile {
+                        Toggle("Share injury details and ranked symptoms", isOn: Binding(get: { sharing }, set: { enabled in
+                            Task { await perform { try await client.setProfileSharing(for: member.id, enabled: enabled) } }
+                        }))
+                        .disabled(busy)
+                        .accessibilityHint("Applies to \(address)")
                     }
-                    Text(invitation?.recipient_email ?? member.user_id.uuidString).font(.subheadline)
                     Button("Remove access", role: .destructive) { Task { await perform { try await client.removeMember(member.user_id) } } }.disabled(busy)
                 }
+            }
+        } header: {
+            Text("People with access")
+        } footer: {
+            if client.members.contains(where: { $0.shares_survivor_profile != nil }) {
+                Text("Each switch gives that person read-only access to your current injury date, description, notes, and symptom order. You can turn it off at any time.")
             }
         }
     }

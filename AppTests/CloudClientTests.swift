@@ -5,8 +5,11 @@ import Foundation
 private final class OfflineRegressionProtocol: URLProtocol {
     private static let lock = NSLock()
     private static var offline = false
+    private static var profileSharing: Bool?
     static func setOffline(_ value: Bool) { lock.lock(); defer { lock.unlock() }; offline = value }
+    static func setProfileSharing(_ value: Bool?) { lock.lock(); defer { lock.unlock() }; profileSharing = value }
     private static func isOffline() -> Bool { lock.lock(); defer { lock.unlock() }; return offline }
+    private static func sharing() -> Bool? { lock.lock(); defer { lock.unlock() }; return profileSharing }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -21,10 +24,19 @@ private final class OfflineRegressionProtocol: URLProtocol {
             ["id": invitedCircle, "name": "Another fictional circle", "owner_id": user]
         ]
         case "/rest/v1/rpc/accept_invite": payload = invitedCircle
-        case "/rest/v1/rpc/my_role": payload = "survivor"
+        case "/rest/v1/rpc/my_role": payload = Self.sharing() == nil ? "survivor" : "caregiver"
         case "/rest/v1/rpc/my_permissions": payload = [["kind": "symptoms", "can_read": true, "can_add": true, "can_edit": true, "can_delete": true]] as [[String: Any]]
         case "/rest/v1/records": payload = [["id": "00000000-0000-4000-8000-000000000003", "circle_id": circle, "kind": "symptoms", "author_id": user, "title": "Fictional symptom", "body": "Fictional test only", "created_at": "2026-10-28T12:00:00Z", "updated_at": "2026-10-28T12:00:00Z"]]
-        case "/rest/v1/check_ins", "/rest/v1/circle_permissions", "/rest/v1/circle_members", "/rest/v1/circle_invitations": payload = [Any]()
+        case "/rest/v1/circle_members":
+            if let shared = Self.sharing() {
+                payload = [["user_id": user, "role": "caregiver", "shares_survivor_profile": shared]] as [[String: Any]]
+            } else { payload = [Any]() }
+        case "/rest/v1/rpc/shared_survivor_profile":
+            payload = [["injury_description": "Fictional injury", "injury_notes": "", "symptoms": [
+                ["id": "00000000-0000-4000-8000-000000000005", "category": "balance", "name": "Dizziness"],
+                ["id": "00000000-0000-4000-8000-000000000006", "category": "physical", "name": "Headache"]
+            ]]] as [[String: Any]]
+        case "/rest/v1/check_ins", "/rest/v1/circle_permissions", "/rest/v1/circle_invitations": payload = [Any]()
         default: client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL)); return
         }
         do {
@@ -90,5 +102,29 @@ final class CloudClientTests: XCTestCase {
         try await client.accept("fictional invitation")
         XCTAssertEqual(client.circleID?.uuidString, "00000000-0000-4000-8000-000000000004",
                        "Joining another circle selects it immediately")
+    }
+
+    @MainActor func testRefreshClearsRevokedProfileWhileKeepingCircleAccess() async throws {
+        OfflineRegressionProtocol.setProfileSharing(true)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OfflineRegressionProtocol.self]
+        let network = URLSession(configuration: configuration)
+        defer { network.invalidateAndCancel(); OfflineRegressionProtocol.setProfileSharing(nil) }
+        let session = CloudSession(access_token: "fictional-access-token", refresh_token: "fictional-refresh-token",
+            expires_at: Date().timeIntervalSince1970 + 3600,
+            user: CloudUser(id: UUID(uuidString: "00000000-0000-4000-8000-000000000002")!, email: "fictional@example.test"))
+        let client = CloudClient(config: BackendConfig(url: URL(string: "https://fictional.invalid")!, key: "sb_publishable_TEST_PLACEHOLDER"), network: network, initialSession: session)
+        try await client.loadCircles()
+        XCTAssertEqual(client.sharedSurvivorProfile?.symptoms.map(\.name), ["Dizziness", "Headache"])
+        OfflineRegressionProtocol.setProfileSharing(false)
+        try await client.refresh()
+        XCTAssertNil(client.sharedSurvivorProfile)
+        XCTAssertEqual(client.role, "caregiver")
+        XCTAssertEqual(client.records.count, 1)
+        OfflineRegressionProtocol.setProfileSharing(true)
+        try await client.refresh()
+        XCTAssertNotNil(client.sharedSurvivorProfile)
+        client.clearVisibleData()
+        XCTAssertNil(client.sharedSurvivorProfile)
     }
 }

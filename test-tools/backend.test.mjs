@@ -79,6 +79,23 @@ try {
   await as('survivor', 'update public.survivor_profiles set injury_date=null, symptoms=$1', [JSON.stringify(ranked.toReversed())]);
   check((await as('survivor', 'select injury_date,symptoms from public.survivor_profiles')).rows[0],
     {injury_date: null, symptoms: ranked.toReversed()}, 'survivor can clear date and save a new order');
+  const sharedProfileSQL = 'select * from public.shared_survivor_profile($1)';
+  const profileGrantSQL = 'update public.circle_members set shares_survivor_profile=$1 where circle_id=$2 and user_id=$3 returning shares_survivor_profile';
+  await denied('anon', sharedProfileSQL, [circle]);
+  for (const role of ['caregiver', 'clinician']) {
+    check((await as(role, sharedProfileSQL, [circle])).rows.length, 0, 'members start with profile sharing off');
+    check((await as(role, profileGrantSQL, [true, circle, users[role]])).rows.length, 0, 'members cannot enable their own access');
+    check((await as('survivor', profileGrantSQL, [true, circle, users[role]])).rows, [{shares_survivor_profile: true}], 'survivor grants access to one member');
+    check((await as(role, sharedProfileSQL, [circle])).rows,
+      [{injury_date: null, injury_description: '', injury_notes: '', symptoms: ranked.toReversed()}], 'member gets only injury fields and ranked symptoms');
+    check((await as(role, 'select * from public.survivor_profiles')).rows.length, 0, 'shared access leaves the full profile private');
+    check((await as(role, sharedProfileSQL, [other])).rows.length, 0, 'grant is scoped to the circle');
+    check((await as(role === 'caregiver' ? 'clinician' : 'caregiver', sharedProfileSQL, [circle])).rows.length, 0, 'grant does not extend to other members');
+    check((await as('outsider', sharedProfileSQL, [circle])).rows.length, 0, 'nonmember cannot see the shared profile');
+    await as('survivor', profileGrantSQL, [false, circle, users[role]]);
+    check((await as(role, sharedProfileSQL, [circle])).rows.length, 0, 'revocation takes effect with the same session');
+  }
+  await denied('survivor', "update public.circle_members set role='clinician' where circle_id=$1", [circle]);
   check((await as('caregiver','select * from public.circle_permissions where circle_id=$1',[circle])).rows.length,0,'shared role cannot read owner control rows');
   check((await as('outsider','select * from public.circles where id=$1',[circle])).rows.length,0,'cross-circle isolation');
   const tokenUnconfirmed = (await as('survivor','select public.invite_member($1,$2,$3) as token',[circle,'unconfirmed@example.test','caregiver'])).rows[0].token;
@@ -204,7 +221,10 @@ try {
   check((await as('caregiver','select * from storage.objects where name=$1',[storagePath])).rows.length,1,'file visible immediately before membership removal');
   check((await db.query('select revoked_at from public.circle_invitations where token_hash=encode(sha256(convert_to($1,\'UTF8\')),\'hex\')',[spareCaregiverToken])).rows[0].revoked_at,null,'spare invitation is live before removal');
   await db.query("update auth.users set email='caregiver-changed@example.test' where id=$1",[users.caregiver]);
+  await as('survivor', profileGrantSQL, [true, circle, users.caregiver]);
+  check((await as('caregiver', sharedProfileSQL, [circle])).rows.length, 1, 'profile visible immediately before membership removal');
   await as('survivor','delete from public.circle_members where circle_id=$1 and user_id=$2',[circle,users.caregiver]);
+  check((await as('caregiver', sharedProfileSQL, [circle])).rows.length, 0, 'membership removal revokes the shared profile');
   await denied('caregiver','select public.accept_invite($1)',[spareCaregiverToken]);
   check((await db.query('select revoked_at is not null as revoked from public.circle_invitations where token_hash=encode(sha256(convert_to($1,\'UTF8\')),\'hex\')',[spareCaregiverToken])).rows[0].revoked,true,'membership removal atomically revokes spare invitations');
   await denied('caregiver',"insert into public.records(circle_id,kind,author_id,title) values($1,'observations',$2,'Revoked')",[circle,users.caregiver]);
@@ -212,6 +232,7 @@ try {
   check((await as('caregiver','select * from storage.objects where name=$1',[storagePath])).rows.length,0,'membership revocation removes file access');
   const fresh=(await as('survivor','select public.invite_member($1,$2,$3) as token',[circle,'caregiver-changed@example.test','caregiver'])).rows[0].token;
   check((await as('caregiver','select public.accept_invite($1) as id',[fresh])).rows[0].id,circle,'only a new survivor-issued invitation can restore access');
+  check((await as('caregiver', sharedProfileSQL, [circle])).rows.length, 0, 'joining again starts with profile sharing off');
   const exposed=(await db.query("select tablename,rowsecurity from pg_tables where schemaname='public' order by tablename")).rows;
   check(exposed.every(table=>table.rowsecurity),true,'RLS enabled on every public table');
   const report={engine:'PGlite 0.5.13 (PostgreSQL WASM)',assertions,permissionCombinations:combinations,status:'PASS',schemaSHA256:createHash('sha256').update(schema).digest('hex'),limitations:['Supabase Auth and Storage service tables are test doubles','No Xcode compile, Swift test execution, hosted service or iPhone run performed']};

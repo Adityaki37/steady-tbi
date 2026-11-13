@@ -46,6 +46,6 @@
     "Initial migration matches the reference schema exactly",
     "Seven core Swift tests supplied (not executed here)"
   ],
-  "schemaSHA256": "25d2df37d1e33a7408c07be3959de0ad1f8a9c99b29eaa85ccb3e260703dd626",
+  "schemaSHA256": "a72fd73c0228f971f241615c385f4600a09fbf4d83e9872aba622160203a3604",
   "scope": "Structural source/project/asset checks only. Not Swift compilation, XCTest execution, or device validation."
 }
