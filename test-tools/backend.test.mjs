@@ -37,8 +37,9 @@ try {
   await db.exec(`
     create role anon nologin;
     create role authenticated nologin;
+    create role service_role nologin;
     create schema auth; create schema storage;
-    create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);
+    create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,raw_app_meta_data jsonb);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     grant usage on schema auth to anon,authenticated;
     grant execute on function auth.uid() to anon,authenticated;
@@ -54,6 +55,20 @@ try {
   const schema = (await Promise.all(migrations.map(name => readFile(new URL(name, migrationDirectory), 'utf8')))).join('\n');
   await db.exec(schema);
   console.log('PASS: migration applies in PostgreSQL (PGlite)');
+  await denied('anon', 'select public.reserve_demo_signup()');
+  await denied('survivor', 'select public.reserve_demo_signup()');
+  await db.exec('set role service_role');
+  try {
+    const reserved = await db.query('select public.reserve_demo_signup() as allowed from generate_series(1,61)');
+    check(reserved.rows.map(row => row.allowed), [...Array(60).fill(true), false], 'signup quota is enforced');
+  } finally { await db.exec('reset role'); }
+  await assert.rejects(db.query("insert into auth.users(id,email) values(gen_random_uuid(),'unmanaged@steady-demo.example')"), /demo signup screen/);
+  await db.exec(`begin;
+    insert into auth.users(id,email) values('00000000-0000-4000-8000-000000000020','managed@steady-demo.example');
+    update auth.users set raw_app_meta_data = '{"steady_demo":true}' where email='managed@steady-demo.example';
+    commit;`);
+  check((await db.query("select count(*)::int as count from auth.users where email='managed@steady-demo.example'")).rows[0].count, 1, 'admin can set the demo identity in the same transaction');
+  await assert.rejects(db.query("update auth.users set email='changed@example.test' where email='managed@steady-demo.example'"), /cannot be changed/);
   const circle = (await as('survivor', "select public.create_circle('Fictional Alex') as id")).rows[0].id;
   const other = (await as('outsider', "select public.create_circle('Other fictional circle') as id")).rows[0].id;
   let spareCaregiverToken;

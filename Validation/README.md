@@ -4,7 +4,7 @@ Mac verification used Apple silicon, Xcode 27.2, an iPhone 18 Pro simulator runn
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| PostgreSQL schema + RLS test | PASS — see `backend-results.json` | 1,129 assertions covering all 128 role/type/CRUD combinations, invitations, isolation, add-only writes, storage policies, check-ins, revocation, and per-member survivor profile sharing |
+| PostgreSQL schema + RLS test | PASS — see `backend-results.json` | 1,133 assertions covering all 128 role/type/CRUD combinations, invitations, isolation, storage policies, check-ins, revocation, survivor profile sharing, and hosted signup controls |
 | Portable structural checks | PASS — see `source-results.json` | Project references, assets, scheme XML, config template, RLS declarations and exact migration/source match |
 | OpenStep Xcode project parser | PASS — see `project-parser-results.json` | Project file parses with native app and test targets and seven app source files |
 | Swift grammar parser | PASS — see `swift-syntax-results.json` | Nine Swift source/manifest/test files parse without grammar errors |
@@ -22,6 +22,7 @@ Mac verification used Apple silicon, Xcode 27.2, an iPhone 18 Pro simulator runn
 | Survivor onboarding in Simulator | PASS | Entered a fictional name and injury, selected symptoms, reordered them, saved, and reopened the profile to verify the details and order |
 | Survivor profile sharing in Simulator | PASS | Enabled the switch for a fictional caregiver and opened the profile as the caregiver. The local API returned the saved order, then denied access after revocation. The profile disappeared from the caregiver’s account and the journal remained visible. |
 | Activity logger in Simulator | PASS | Logged and reopened a fictional activity with a start time, 25-minute duration, fatigue 3 of 5, and a symptom. Local Supabase checks covered editing, deletion, and owner-only access. |
+| Hosted Steady Demo | PASS | A clean source bundle built and launched in the Simulator. Live HTTP checks exercised username signup and sign-in for all three roles, invitation matching, journal permissions, profile sharing and revocation, and private activities. |
 | Remote APNs push delivery | **NOT RUN** | Needs a paid Apple Developer account, APNs key and a real device |
 | Two-device and accessibility UI acceptance | **NOT RUN** | Follow `MANUAL_TESTS.md` |
 

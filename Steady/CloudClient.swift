@@ -6,13 +6,38 @@ import SteadyCore
 struct BackendConfig {
     let url: URL
     let key: String
+    var isHostedDemo: Bool { url.host == "sipqoeqvwkaljqifddxd.supabase.co" }
+
     static func load() -> BackendConfig? {
-        guard let file = Bundle.main.url(forResource: "Backend.local", withExtension: "plist", subdirectory: "SteadyResources"),
+        for name in ["Backend.local", "Backend.demo"] {
+            if let config = load(resource: name) { return config }
+        }
+        return nil
+    }
+
+    private static func load(resource: String) -> BackendConfig? {
+        guard let file = Bundle.main.url(forResource: resource, withExtension: "plist", subdirectory: "SteadyResources"),
               let data = try? Data(contentsOf: file),
               let dictionary = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String],
               let value = dictionary["SUPABASE_URL"], let url = URL(string: value), url.scheme == "https", url.host != nil,
               let key = dictionary["SUPABASE_PUBLISHABLE_KEY"], key.hasPrefix("sb_publishable_") else { return nil }
         return BackendConfig(url: url, key: key)
+    }
+}
+
+enum DemoAccount {
+    private static let suffix = "@steady-demo.example"
+
+    static func email(for username: String) throws -> String {
+        let normalized = username.lowercased()
+        guard normalized.range(of: #"^[a-z0-9][a-z0-9_-]{2,31}\z"#, options: .regularExpression) != nil else {
+            throw DemoError.invalid("Use 3–32 letters, numbers, hyphens or underscores. Start with a letter or number.")
+        }
+        return normalized + suffix
+    }
+
+    static func username(for email: String) -> String {
+        email.hasSuffix(suffix) ? String(email.dropLast(suffix.count)) : email
     }
 }
 struct CloudUser: Codable {
@@ -162,16 +187,29 @@ private enum SessionKeychain {
         let (data, response) = try await network.data(for: request)
         guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
             let details = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            if path == "rest/v1/rpc/invite_member", config.isHostedDemo,
+               (details?["message"] as? String)?.contains("demo_invites_require_existing_account") == true {
+                throw DemoError.invalid("That demo username was not found. Ask the recipient to sign up, then check their username.")
+            }
             throw DemoError.invalid((details?["message"] as? String) ?? (details?["msg"] as? String) ?? (details?["error_description"] as? String) ?? "The backend request failed. Refresh access or sign in again.")
         }
         return data
     }
     private func rpc(_ name: String, _ body: [String: Any]) async throws -> Data { try await request("rest/v1/rpc/" + name, method: "POST", body: body) }
     func signIn(email: String, password: String) async throws {
-        try await authenticate(email: email, password: password, newRole: nil)
+        let address = config?.isHostedDemo == true ? try DemoAccount.email(for: email) : email
+        try await authenticate(email: address, password: password, newRole: nil)
     }
     func signUp(email: String, password: String, role: DemoRole) async throws {
-        try await authenticate(email: email, password: password, newRole: role)
+        if config?.isHostedDemo == true {
+            let address = try DemoAccount.email(for: email)
+            _ = try await request("functions/v1/demo-signup", method: "POST", body: [
+                "username": DemoAccount.username(for: address), "password": password, "role": role.rawValue
+            ], authenticated: false)
+            try await authenticate(email: address, password: password, newRole: nil)
+        } else {
+            try await authenticate(email: email, password: password, newRole: role)
+        }
     }
     private func authenticate(email: String, password: String, newRole: DemoRole?) async throws {
         sessionEpoch = UUID()
@@ -367,7 +405,8 @@ private enum SessionKeychain {
     }
     func invite(email: String, role: String) async throws -> String {
         guard let id = circleID else { throw DemoError.missing }
-        let data = try await rpc("invite_member", ["c": id.uuidString, "email": email, "r": role])
+        let address = config?.isHostedDemo == true ? try DemoAccount.email(for: email) : email
+        let data = try await rpc("invite_member", ["c": id.uuidString, "email": address, "r": role])
         return try JSONDecoder().decode(String.self, from: data)
     }
     func accept(_ token: String) async throws {

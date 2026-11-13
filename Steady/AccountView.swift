@@ -25,6 +25,7 @@ struct AccountView: View {
     @State private var showingSurvivorProfile = false
     @State private var survivorProfile: SurvivorProfile?
     @State private var promptedSurvivor: UUID?
+    private var hostedDemo: Bool { client.config?.isHostedDemo == true }
     var body: some View {
         NavigationStack {
             Form {
@@ -144,8 +145,7 @@ struct AccountView: View {
     private var setupSection: some View {
         Section(secondary: "Backend setup is pending") {
             Label("The local demo works now", systemImage: "checkmark.circle")
-            Text("A new Supabase project must be configured before separate devices can share fictional data. No hosted database was provisioned with this source project.")
-            Text("On your Mac, follow backend/README.md. Copy SteadyResources/Backend.example.plist to Backend.local.plist and enter the project URL and publishable key, then rebuild.")
+            Text("This build is missing its backend settings. Download the latest Steady project or follow backend/README.md to configure a test backend.")
         }
     }
     private var signInSection: some View {
@@ -158,8 +158,13 @@ struct AccountView: View {
                 profileRolePicker("I’m signing up as")
                 if let profileRole { Text(profileDescription(profileRole)).font(.footnote).foregroundStyle(Palette.secondaryText) }
             }
-            TextField("Email", text: $email).textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(busy)
-            SecureField("Password", text: $password).textContentType(creating ? .newPassword : .password).disabled(busy)
+            TextField(hostedDemo ? "Demo username" : "Email", text: $email).textContentType(.username)
+                .keyboardType(hostedDemo ? .asciiCapable : .emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(busy)
+            SecureField(hostedDemo ? "Demo password" : "Password", text: $password).textContentType(creating ? .newPassword : .password).disabled(busy)
+            if hostedDemo && creating {
+                Text("Choose a fictional username and a new password of at least 10 characters. Keep your password for later sign-in. Demo accounts have no email recovery.")
+                    .font(.footnote).foregroundStyle(Palette.secondaryText)
+            }
             Button(busy ? "Working…" : creating ? "Create account" : "Sign in") {
                 Task {
                     await perform {
@@ -191,7 +196,7 @@ struct AccountView: View {
     }
     private var accountSection: some View {
         Section(secondary: "Account") {
-            Text(client.session?.user.email ?? "Signed in")
+            Text(accountLabel(client.session?.user.email ?? "Signed in"))
             if let accountRole = client.session?.user.profileRole {
                 LabeledContent("Account role", value: accountRole.title)
                 if accountRole == .survivor {
@@ -244,7 +249,9 @@ struct AccountView: View {
     }
     private var joinSection: some View {
         Section(secondary: "Join a survivor’s circle") {
-            Text("Use the invitation code the survivor shares with you. Sign in with the email address they invited.").font(.footnote).foregroundStyle(Palette.secondaryText)
+            Text(hostedDemo ? "Use the code the survivor shares with you. Sign in with the demo username they invited."
+                 : "Use the invitation code the survivor shares with you. Sign in with the email address they invited.")
+                .font(.footnote).foregroundStyle(Palette.secondaryText)
             TextField("Invitation code", text: $acceptToken, axis: .vertical)
                 .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
             Button("Join circle") {
@@ -324,10 +331,15 @@ struct AccountView: View {
     }
     private var invitationsSection: some View {
         Section(secondary: "Invite a caregiver or clinician") {
-            TextField("Recipient account email", text: $inviteEmail).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
+            TextField(hostedDemo ? "Recipient’s demo username" : "Recipient account email", text: $inviteEmail)
+                .keyboardType(hostedDemo ? .asciiCapable : .emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
             Picker("Role in your circle", selection: $inviteRole) {
                 Text("Caregiver").tag(DemoRole.caregiver)
                 Text("Clinician").tag(DemoRole.clinician)
+            }
+            if hostedDemo {
+                Text("Ask the recipient to create a demo account first, then enter their username here.")
+                    .font(.footnote).foregroundStyle(Palette.secondaryText)
             }
             Text("Review the role’s permissions below before sharing the code.").font(.footnote).foregroundStyle(Palette.secondaryText)
             Button("Create invitation code") {
@@ -346,7 +358,7 @@ struct AccountView: View {
             }
             ForEach(client.invitations.filter { $0.revoked_at == nil && $0.accepted_at == nil }) { invitation in
                 VStack(alignment: .leading) {
-                    Text("\(invitation.recipient_email) · \(invitation.role)").font(.subheadline)
+                    Text("\(accountLabel(invitation.recipient_email)) · \(invitation.role)").font(.subheadline)
                     Text("Expires: \(invitation.expires_at)").font(.caption)
                     Button("Revoke invitation", role: .destructive) { Task { await perform { try await client.revoke(invitation.id) } } }.disabled(busy)
                 }
@@ -362,13 +374,13 @@ struct AccountView: View {
                 }?.recipient_email ?? member.user_id.uuidString
                 VStack(alignment: .leading, spacing: 10) {
                     Text(member.role.capitalized)
-                    Text(address).font(.subheadline)
+                    Text(accountLabel(address)).font(.subheadline)
                     if let sharing = member.shares_survivor_profile {
                         Toggle("Share injury details and ranked symptoms", isOn: Binding(get: { sharing }, set: { enabled in
                             Task { await perform { try await client.setProfileSharing(for: member.id, enabled: enabled) } }
                         }))
                         .disabled(busy)
-                        .accessibilityHint("Applies to \(address)")
+                        .accessibilityHint("Applies to \(accountLabel(address))")
                     }
                     Button("Remove access", role: .destructive) { Task { await perform { try await client.removeMember(member.user_id) } } }.disabled(busy)
                 }
@@ -400,6 +412,9 @@ struct AccountView: View {
         catch is CancellationError { }
         catch let error as URLError where error.code == .cancelled { }
         catch { client.message = error.localizedDescription }
+    }
+    private func accountLabel(_ address: String) -> String {
+        hostedDemo ? DemoAccount.username(for: address) : address
     }
     // Upload the captured APNs token once the user is signed in. Silent on failure
     // (for example without a paid Apple account); the foreground refresh is the fallback.

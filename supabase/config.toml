@@ -396,6 +396,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/notify-symptom-break/index.ts"
 
+[functions.demo-signup]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/demo-signup/index.ts"
+
 [analytics]
 enabled = true
 port = 54327
