@@ -2,16 +2,29 @@
 
 A native SwiftUI **fictional-data prototype** for noticing and recording TBI-related experiences, with survivor, caregiver and clinician contributions. Sensor-based overload prediction is future work; this app does not predict overload or interpret scans.
 
-## Start on your Mac
+## Try Steady on your Mac
 
-1. Clone [the GitHub repository](https://github.com/Adityaki37/steady-tbi) with `git clone https://github.com/Adityaki37/steady-tbi.git`, or unzip the complete project folder. Open **`Steady.xcodeproj`**, not an individual Swift file. No third-party Swift dependencies or project-generator install is required.
-2. Use Xcode 16 or newer, with an iOS SDK compatible with your iPhone. The deployment target is **iOS 17.0**. Check [Apple’s Xcode compatibility table](https://developer.apple.com/xcode/system-requirements/) for your Mac’s macOS version. Use the latest compatible official Xcode from Apple; do not install Xcode on Windows.
-3. In Xcode, choose the **Steady** scheme and an installed iPhone simulator. Press **⌘R**. Local demo mode works without an account, internet or backend configuration. Alternatively run `sh scripts/run-on-mac.sh`: it checks that Xcode is already installed, finds an available iPhone simulator, boots it, builds the Steady scheme with local Simulator signing in `~/Library/Developer/SteadyDerivedData`, then installs and launches `com.aditya.steadydemo`. It never installs software, signs in or changes Apple account settings; `sh scripts/run-on-mac.sh --open` only opens `Steady.xcodeproj`. On non-macOS it prints a message and exits 0. `ios-build.yml` is configured to run it on macos-15 (log marker `RUN_ON_MAC_EXIT`); not yet verified in CI.
-4. For your own iPhone, connect it by cable, unlock it and trust the Mac. In **Xcode → Settings → Accounts**, sign in yourself with your free Apple Account. Do not send your password or verification codes to an agent.
-5. Select the **Steady target → Signing & Capabilities**. Leave automatic signing enabled, choose your **Personal Team**, and change `com.aditya.steadydemo` to a unique identifier if Xcode requests it. The default build does **not** sign with the Push Notifications entitlement, because a free Personal Team cannot provision that capability and would refuse to sign. A **free Personal Team builds and runs the app on your own iPhone** with the local demo, the separate-account mode and the same-device notification fallback; it **cannot receive remote pushes**. `Steady/Steady.entitlements` (`aps-environment = development`) is kept in the repo for when you add the capability on a paid account. Enabling live remote push requires a **paid Apple Developer Program membership** (see step below and [MAC_HANDOFF.md](MAC_HANDOFF.md)).
-6. Select your connected iPhone as the run destination. Enable **Developer Mode** on the iPhone if requested, restart/confirm the system prompt, and press **⌘R**. Follow any developer trust prompt on the device.
+The download contains the iPhone app’s source code. You can run the fictional demo in the iPhone Simulator with Xcode. The demo works offline after setup and runs without a Steady account or Supabase project.
 
-No paid Apple membership, TestFlight, Rork or cloud build service is required for own-device development of the local demo and the local-notification fallback. Only live cross-device remote push needs the paid program. Free Personal Team provisioning is temporary and expires in about **7 days**; rerun from Xcode when signing expires. Consult [Apple’s membership information](https://developer.apple.com/support/compare-memberships/) and the actual Xcode signing message rather than enrolling or paying to solve a demo build error.
+1. Install and open a compatible version of **Xcode 16 or later**. Install an **iOS Simulator runtime** if Xcode prompts you. [Xcode downloads and Mac compatibility](https://developer.apple.com/xcode/system-requirements/) · [Installing simulator runtimes](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components)
+2. Unzip the download and double-click **`Steady.xcodeproj`** in the extracted folder. [Download Steady ZIP](https://github.com/Adityaki37/steady-tbi/archive/refs/heads/main.zip)
+3. In the Xcode toolbar, select the **Steady** scheme and an **iPhone simulator** as the run destination. Press **⌘R**. In Steady, leave **Accounts and sharing** off, choose **Survivor**, and open **Today → Activity log** or tap **Log a symptom**. The role picker lets you explore the caregiver and clinician demo views.
+
+If you prefer Terminal, run this from the extracted folder. The script builds, installs, and launches the demo in an available iPhone simulator.
+
+```sh
+sh scripts/run-on-mac.sh
+```
+
+Separate accounts, survivor onboarding, and cross-device sharing need a configured test backend. [Backend setup](backend/README.md)
+
+### Run on your own iPhone
+
+1. Connect and unlock your iPhone, trust the Mac if prompted, and sign in under **Xcode → Settings → Accounts** with your Apple Account.
+2. Select the **Steady** target, open **Signing & Capabilities**, enable automatic signing, and choose your **Personal Team**. Change `com.aditya.steadydemo` to a unique bundle identifier if Xcode requests it.
+3. Select your connected iPhone, enable **Developer Mode** if prompted, and press **⌘R**. Follow any developer trust prompt on the device.
+
+Apple’s free Personal Team supports own-device testing with temporary provisioning. Run again from Xcode when the provisioning profile expires. Remote push uses a paid Apple Developer Program membership and separate setup. [Apple membership comparison](https://developer.apple.com/support/compare-memberships/) · [Remote push setup](MAC_HANDOFF.md)
 
 ## What is implemented
 
