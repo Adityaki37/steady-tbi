@@ -18,10 +18,13 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        directory = support.appendingPathComponent("SteadyDemo", isDirectory: true)
-        // UI tests pass -STEADY_UITEST for a fresh, deterministic fictional state on every launch.
+        // UI tests reset a separate directory for a fresh fictional state on every launch.
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-STEADY_UITEST") { try? FileManager.default.removeItem(at: directory) }
+        let isUITest = ProcessInfo.processInfo.arguments.contains("-STEADY_UITEST")
+        directory = support.appendingPathComponent(isUITest ? "SteadyUITestDemo" : "SteadyDemo", isDirectory: true)
+        if isUITest { try? FileManager.default.removeItem(at: directory) }
+        #else
+        directory = support.appendingPathComponent("SteadyDemo", isDirectory: true)
         #endif
         persistence = DiskPersistence(url: directory.appendingPathComponent("demo-v1.json"))
         do {
@@ -36,6 +39,9 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
     }
     func can(_ kind: RecordKind, _ action: DemoAction) -> Bool { repository?.can(role, kind, action) == true && loadFailure == nil }
     func records(_ kind: RecordKind) throws -> [DemoRecord] { try repo().records(role, kind) }
+    func activityEntries() throws -> [ActivityEntry] { try repo().activityEntries(role) }
+    func saveActivity(_ entry: ActivityEntry, editing: Bool) throws { try repo().saveActivity(role, entry, editing: editing) }
+    func deleteActivity(_ id: UUID) throws { try repo().deleteActivity(role, id) }
     func grants() throws -> [DemoRole: [RecordKind: Grant]] { try repo().grants(role) }
     func setGrant(_ target: DemoRole, _ kind: RecordKind, _ action: DemoAction, _ value: Bool) throws {
         try repo().setGrant(actor: role, target: target, kind: kind, action: action, value: value); revision += 1

@@ -12,6 +12,32 @@ private final class MemoryPersistence: DemoPersistence {
 }
 
 final class DemoRepositoryTests: XCTestCase {
+    @MainActor func testPrivateActivityPersistenceAndRetry() async throws {
+        let memory = MemoryPersistence()
+        let original = try DemoRepository(persistence: memory)
+        let repository = try DemoRepository(persistence: memory)
+        XCTAssertTrue(try repository.activityEntries(.survivor).isEmpty)
+        let start = Date(timeIntervalSince1970: 1_760_000_000)
+        let entry = ActivityEntry(activity: "Reading", startedAt: start, durationMinutes: 25, fatigue: 3, symptoms: "Headache")
+        XCTAssertThrowsError(try repository.saveActivity(.caregiver, entry, editing: false))
+        XCTAssertThrowsError(try repository.activityEntries(.clinician))
+        try repository.saveActivity(.survivor, entry, editing: false)
+        try repository.saveActivity(.survivor, entry, editing: false)
+        let reopened = try DemoRepository(persistence: memory)
+        XCTAssertEqual(try reopened.activityEntries(.survivor), [entry])
+        XCTAssertEqual(try reopened.records(.survivor, .symptoms), try original.records(.survivor, .symptoms))
+        let updated = ActivityEntry(id: entry.id, activity: "Reading", startedAt: start, durationMinutes: 30, fatigue: 0, symptoms: "")
+        memory.fail = true
+        XCTAssertThrowsError(try reopened.saveActivity(.survivor, updated, editing: true))
+        XCTAssertEqual(try reopened.activityEntries(.survivor), [entry])
+        memory.fail = false
+        try reopened.saveActivity(.survivor, updated, editing: true)
+        XCTAssertEqual(try reopened.activityEntries(.survivor), [updated])
+        try reopened.deleteActivity(.survivor, entry.id)
+        XCTAssertThrowsError(try reopened.saveActivity(.survivor, updated, editing: true))
+        XCTAssertTrue(try DemoRepository(persistence: memory).activityEntries(.survivor).isEmpty)
+    }
+
     @MainActor func testEveryPermissionCombination() async throws {
         var combinations = 0
         for role in [DemoRole.caregiver, .clinician] {

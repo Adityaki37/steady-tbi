@@ -35,6 +35,8 @@ In **Manage sharing → People with access**, the survivor can turn on **Share i
 
 ## Modes and data
 
+Survivors can open **Activity log** from **Today** or **Journal** in the local demo, or from **Account** when signed in. Each entry records the activity, start date and time, duration in minutes, cognitive fatigue at the end on a 0–5 scale, and optional symptoms in the survivor’s own words. Tap an entry to edit it or swipe to delete it. Entries are private in account mode and the fictional demo stores its own entries on the device.
+
 The local role picker is an explicit demonstration, **not production authentication**. Anyone with access to that demo can switch to Survivor. Separate-account mode does not use this role picker: its role comes from ownership or an accepted server invitation.
 
 Local state is stored in the app’s Application Support directory (`SteadyDemo/demo-v1.json`), with imported files in `Attachments/`. Writes are atomic and use iOS file protection. The directory is excluded from app backups. Reset restores fictional seeds/default permissions, removes imported local files and clears the check-in notification. A corrupt file shows recovery UI instead of silently resetting. Local data is never automatically uploaded to account mode.
@@ -78,7 +80,7 @@ On the Mac, before calling the app verified:
 sh scripts/mac-check.sh
 ```
 
-`sh scripts/run-on-mac.sh` builds and launches the app in a simulator (see Start on your Mac). `sh scripts/mac-check.sh` runs the seven supplied Swift package XCTest methods (including the complete permission matrix, disk persistence/reset, corruption and failed-write recovery), then an unsigned simulator build. These Swift tests and the build have **not run on Windows**. An additional **SteadyAppTests** target in the Xcode scheme contains an offline/manual-refresh regression test using URLProtocol; run **Product → Test (⌘U)** with an installed simulator selected. That app-hosted test has also **not run here**. Follow [MANUAL_TESTS.md](MANUAL_TESTS.md) for native UI and two-device checks.
+`sh scripts/run-on-mac.sh` builds and launches the app in a simulator (see Start on your Mac). `sh scripts/mac-check.sh` runs the Swift package XCTest methods, then an unsigned simulator build. The **SteadyAppTests** target in the Xcode scheme contains app-hosted regression tests. Run **Product → Test (⌘U)** with an installed simulator selected. Follow [MANUAL_TESTS.md](MANUAL_TESTS.md) for native UI and two-device checks.
 
 ## Handoff to Codex on your Mac
 

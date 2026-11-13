@@ -283,6 +283,40 @@ await check('shared roles cannot read invitations, members of others or owner co
   ok(all); assert.equal(all.json.length, 2);
 });
 
+await check('activity logs round-trip and remain private even when the survivor profile is shared', async () => {
+  const activity = {
+    id: randomUUID(), user_id: people.survivor.id, activity: 'Fictional grocery trip',
+    started_at: '2025-06-20T15:30:00+00:00', duration_minutes: 35, fatigue: 4, symptoms: 'Headache and trouble concentrating'
+  };
+  const path = 'rest/v1/activity_logs';
+  const entryPath = path + '?id=eq.' + activity.id;
+  const insert = (role, body) => api(path + '?on_conflict=id', {
+    method: 'POST', token: T(role), body, prefer: 'resolution=ignore-duplicates,return=minimal'
+  });
+  ok(await insert('survivor', activity), 'add activity');
+  ok(await insert('survivor', activity), 'retry activity without a duplicate');
+  const read = await api(entryPath, { token: T('survivor') });
+  ok(read); assert.deepEqual(read.json, [activity]);
+  ok(await changeProfileSharing('survivor', 'caregiver', true), 'share profile during privacy check');
+  for (const role of ['caregiver', 'clinician', 'outsider']) {
+    emptyRows(await api(entryPath, { token: T(role) }), 'other account cannot read activity');
+    emptyRows(await api(entryPath, { method: 'PATCH', token: T(role), body: { fatigue: 0 }, representation: true }), 'other account cannot edit activity');
+    emptyRows(await api(entryPath, { method: 'DELETE', token: T(role), representation: true }), 'other account cannot delete activity');
+    denied(await insert(role, { ...activity, id: randomUUID() }), 'other account cannot add activity for survivor');
+  }
+  ok(await changeProfileSharing('survivor', 'caregiver', false), 'turn off temporary test grant');
+  denied(await api(entryPath, { token: anon }), 'anonymous activity read');
+  rejected(await insert('survivor', { ...activity, id: randomUUID(), duration_minutes: 0 }), 'reject zero duration');
+  rejected(await insert('survivor', { ...activity, id: randomUUID(), fatigue: 6 }), 'reject invalid fatigue');
+  const updated = await api(entryPath, {
+    method: 'PATCH', token: T('survivor'), body: { fatigue: 0, symptoms: '', duration_minutes: 40 }, representation: true
+  });
+  ok(updated); assert.deepEqual(updated.json, [{ ...activity, fatigue: 0, symptoms: '', duration_minutes: 40 }]);
+  const removed = await api(entryPath, { method: 'DELETE', token: T('survivor'), representation: true });
+  ok(removed); assert.equal(removed.json.length, 1);
+  emptyRows(await api(entryPath, { token: T('survivor') }), 'activity gone after deletion');
+});
+
 // ---------------------------------------------------------------- permissions
 await check('my_role and my_permissions match the default matrix', async () => {
   const cg = await rpc('my_role', T('caregiver'), { c: circle }); assert.equal(cg.json, 'caregiver');

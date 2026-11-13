@@ -113,6 +113,38 @@ final class SteadyUITests: XCTestCase {
 
     // MARK: Flows
 
+    func testLogAndReopenAnActivity() {
+        launch()
+        let log = app.buttons["Activity log"]
+        scrollUntilHittable(log)
+        log.tap()
+        app.buttons["Log activity"].tap()
+        let name = app.textFields["activityName"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
+        name.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
+        app.typeText("Fictional reading session")
+        let minutes = app.textFields["activityDuration"]
+        minutes.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
+        app.typeText("25")
+        app.buttons["activityFatigue"].tap()
+        let rating = app.buttons["3"].exists ? app.buttons["3"] : app.menuItems["3"]
+        XCTAssertTrue(rating.waitForExistence(timeout: 5))
+        rating.tap()
+        let symptoms = app.textFields["activitySymptoms"].exists ? app.textFields["activitySymptoms"] : app.textViews["activitySymptoms"]
+        scrollUntilHittable(symptoms)
+        symptoms.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.12)).tap()
+        app.typeText("Headache")
+        app.buttons["saveActivity"].tap()
+        let saved = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Fictional reading session")).firstMatch
+        XCTAssertTrue(saved.waitForExistence(timeout: 10))
+        XCTAssertTrue(saved.label.contains("25 min"))
+        XCTAssertTrue(saved.label.contains("Headache"))
+        saved.tap()
+        XCTAssertEqual(name.value as? String, "Fictional reading session")
+        XCTAssertEqual(minutes.value as? String, "25")
+        XCTAssertTrue(app.buttons["activityFatigue"].label.contains("3") || (app.buttons["activityFatigue"].value as? String) == "3")
+    }
+
     func testSurvivorLogsSymptomAndJournalShowsIt() {
         launch()
         shot("01-today-survivor")

@@ -111,6 +111,12 @@ struct HomeView: View {
                         Button(store.role == .survivor ? "Log a symptom" : store.role == .caregiver ? "Add an observation" : "Add a clinician note") { editor = true }
                             .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("primaryAddButton")
                     } else { Label("Adding is off for this role", systemImage: "lock").foregroundStyle(Palette.secondaryText) }
+                    if store.role == .survivor {
+                        NavigationLink("Activity log") {
+                            ActivityLogView(privacyNote: "Use fictional entries in this on-device demo.",
+                                            load: store.activityEntries, save: store.saveActivity, remove: store.deleteActivity)
+                        }
+                    }
                 }
                 if store.role == .survivor, let message = store.checkIn() {
                     Card {
@@ -164,6 +170,12 @@ struct JournalView: View {
     var body: some View {
         List {
             Section {
+                if store.role == .survivor {
+                    NavigationLink("Activity log") {
+                        ActivityLogView(privacyNote: "Use fictional entries in this on-device demo.",
+                                        load: store.activityEntries, save: store.saveActivity, remove: store.deleteActivity)
+                    }
+                }
                 Picker("Entry type", selection: $kind) {
                     ForEach(RecordKind.allCases.filter { $0 != .attachments }) { Text($0.title).tag($0) }
                 }.pickerStyle(.menu).accessibilityIdentifier("entryTypePicker")

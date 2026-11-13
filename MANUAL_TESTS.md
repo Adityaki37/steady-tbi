@@ -17,6 +17,7 @@ CI context: simulator XCUITests (`SteadyUITests`) are configured to cover local 
 8a. As Caregiver, use the **"suggest taking a break" / possible-symptom** action. Confirm the same-iPhone local notification (and the in-app notice) uses calm, supportive wording and explicitly says it is a supportive prompt, **not a diagnosis** and does not predict overload. Confirm it is **same-device only, no remote push** is sent to any other device in local demo mode.
 9. Reset as Survivor. Seed counts, default permissions and sample file return; imported local files and scheduled check-in notification are removed. Relaunch confirms reset persisted.
 10. VoiceOver labels, largest Dynamic Type, light/dark mode, small iPhone, landscape and iPad: no clipped controls; no information communicated only by color.
+11. Open **Activity log** as the survivor. Save a fictional activity with a past start time, a duration, a fatigue rating, and symptoms. Reopen the entry to check the values. Edit it to fatigue 0 and clear the symptoms, then confirm the revised entry survives relaunch. Check that the caregiver and clinician demo roles have no activity log link.
 
 ## Separate test accounts on two devices (requires a new configured backend)
 

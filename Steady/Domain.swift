@@ -57,6 +57,41 @@ public struct DemoRecord: Codable, Identifiable, Equatable {
     public let attachment: DemoAttachment?
 }
 
+public struct ActivityEntry: Codable, Identifiable, Equatable {
+    public let id: UUID
+    public let activity: String
+    public let startedAt: Date
+    public let durationMinutes: Int
+    public let fatigue: Int
+    public let symptoms: String
+
+    public init(id: UUID = UUID(), activity: String, startedAt: Date, durationMinutes: Int, fatigue: Int, symptoms: String) {
+        self.id = id
+        self.activity = activity.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.startedAt = startedAt
+        self.durationMinutes = durationMinutes
+        self.fatigue = fatigue
+        self.symptoms = symptoms.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, activity, fatigue, symptoms
+        case startedAt = "started_at"
+        case durationMinutes = "duration_minutes"
+    }
+
+    public func validate() throws {
+        guard !activity.isEmpty, activity.unicodeScalars.count <= 100 else {
+            throw DemoError.invalid("Enter an activity name of up to 100 characters.")
+        }
+        guard (1...Int(Int32.max)).contains(durationMinutes) else {
+            throw DemoError.invalid("Enter a positive duration in whole minutes.")
+        }
+        guard (0...5).contains(fatigue) else { throw DemoError.invalid("Choose a fatigue rating from 0 to 5.") }
+        guard symptoms.unicodeScalars.count <= 1000 else { throw DemoError.invalid("Use up to 1,000 characters for symptoms.") }
+    }
+}
+
 public enum DemoError: LocalizedError {
     case denied, missing, invalid(String), unavailable
     public var errorDescription: String? {
@@ -96,6 +131,7 @@ private struct DemoState: Codable {
     var permissions: [DemoRole: [RecordKind: Grant]]
     var records: [DemoRecord]
     var checkIn: String?
+    var activities: [ActivityEntry]?
 
     static func seed() -> DemoState {
         var permissions = Dictionary(uniqueKeysWithValues: DemoRole.allCases.map { role in
@@ -129,6 +165,7 @@ private struct DemoState: Codable {
         } }
         guard Set(records.map(\.id)).count == records.count else { throw DemoError.invalid("Saved entries have duplicate identifiers.") }
         for record in records { try Self.validate(record) }
+        for activity in activities ?? [] { try activity.validate() }
     }
 
     static func validate(_ record: DemoRecord) throws {
@@ -181,6 +218,36 @@ private struct DemoState: Codable {
     public func records(_ role: DemoRole, _ kind: RecordKind) throws -> [DemoRecord] {
         try require(role, kind, .read)
         return state.records.filter { $0.kind == kind }.sorted { $0.createdAt > $1.createdAt }
+    }
+    public func activityEntries(_ role: DemoRole) throws -> [ActivityEntry] {
+        guard role == .survivor else { throw DemoError.denied }
+        return (state.activities ?? []).sorted { $0.startedAt > $1.startedAt }
+    }
+    public func saveActivity(_ role: DemoRole, _ entry: ActivityEntry, editing: Bool) throws {
+        guard role == .survivor else { throw DemoError.denied }
+        try entry.validate()
+        var next = state
+        var activities = next.activities ?? []
+        if let index = activities.firstIndex(where: { $0.id == entry.id }) {
+            if !editing {
+                guard activities[index] == entry else {
+                    throw DemoError.invalid("This activity is already saved. Open it from your activity log to make changes.")
+                }
+                return
+            }
+            activities[index] = entry
+        } else {
+            guard !editing else { throw DemoError.missing }
+            activities.append(entry)
+        }
+        next.activities = activities
+        try commit(next)
+    }
+    public func deleteActivity(_ role: DemoRole, _ id: UUID) throws {
+        guard role == .survivor else { throw DemoError.denied }
+        var next = state
+        next.activities?.removeAll { $0.id == id }
+        try commit(next)
     }
     public func record(_ role: DemoRole, _ kind: RecordKind, _ id: UUID) throws -> DemoRecord {
         try require(role, kind, .read)

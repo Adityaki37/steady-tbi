@@ -150,14 +150,14 @@ private enum SessionKeychain {
     }
     private func request(_ path: String, method: String = "GET", body: Any? = nil, authenticated: Bool = true,
                          bytes: Data? = nil, mime: String = "application/json", representation: Bool = false,
-                         mergeDuplicates: Bool = false) async throws -> Data {
+                         conflictResolution: String? = nil) async throws -> Data {
         guard let config, let url = URL(string: path, relativeTo: config.url.appendingPathComponent("/")) else { throw DemoError.invalid("Configure a new backend first.") }
         var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = 30
         request.setValue(config.key, forHTTPHeaderField: "apikey")
         if authenticated { request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization") }
         request.setValue(mime, forHTTPHeaderField: "Content-Type")
         let returnPreference = representation ? "return=representation" : "return=minimal"
-        request.setValue(mergeDuplicates ? "resolution=merge-duplicates," + returnPreference : returnPreference, forHTTPHeaderField: "Prefer")
+        request.setValue(conflictResolution.map { "resolution=\($0)," + returnPreference } ?? returnPreference, forHTTPHeaderField: "Prefer")
         request.httpBody = try body.map { try JSONSerialization.data(withJSONObject: $0) } ?? bytes
         let (data, response) = try await network.data(for: request)
         guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
@@ -224,8 +224,76 @@ private enum SessionKeychain {
             "injury_notes": profile.injury_notes,
             "symptoms": symptoms
         ]
-        _ = try await request("rest/v1/survivor_profiles?on_conflict=user_id", method: "POST", body: body, mergeDuplicates: true)
+        _ = try await request("rest/v1/survivor_profiles?on_conflict=user_id", method: "POST", body: body, conflictResolution: "merge-duplicates")
         guard sessionEpoch == expected else { throw CancellationError() }
+    }
+    func loadActivities() async throws -> [ActivityEntry] {
+        let path = try ownActivityPath()
+        let expected = sessionEpoch
+        var activities: [ActivityEntry] = []
+        var seen = Set<UUID>()
+        let pageSize = 200
+        var offset = 0
+        while true {
+            let data = try await request(path + "&order=started_at.desc,id.desc&limit=\(pageSize)&offset=\(offset)")
+            guard sessionEpoch == expected else { throw CancellationError() }
+            let page = try decodeActivities(data)
+            activities.append(contentsOf: page.filter { seen.insert($0.id).inserted })
+            if page.count < pageSize { return activities }
+            offset += page.count
+        }
+    }
+    private func decodeActivities(_ data: Data) throws -> [ActivityEntry] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { value in
+            let container = try value.singleValueContainer()
+            let text = try container.decode(String.self)
+            let format = ISO8601DateFormatter()
+            format.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = format.date(from: text) { return date }
+            format.formatOptions = [.withInternetDateTime]
+            if let date = format.date(from: text) { return date }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid activity start time")
+        }
+        return try decoder.decode([ActivityEntry].self, from: data)
+    }
+    func saveActivity(_ entry: ActivityEntry, editing: Bool) async throws {
+        try entry.validate()
+        let path = try ownActivityPath(id: entry.id)
+        let expected = sessionEpoch
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(entry)
+        guard var values = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw DemoError.missing }
+        if editing {
+            values.removeValue(forKey: "id")
+            let result = try await request(path, method: "PATCH", body: values, representation: true)
+            guard sessionEpoch == expected else { throw CancellationError() }
+            guard try !decodeActivities(result).isEmpty else { throw DemoError.missing }
+        } else {
+            values["user_id"] = session?.user.id.uuidString
+            _ = try await request("rest/v1/activity_logs?on_conflict=id", method: "POST", body: values, conflictResolution: "ignore-duplicates")
+            guard sessionEpoch == expected else { throw CancellationError() }
+            let result = try await request(path)
+            guard sessionEpoch == expected else { throw CancellationError() }
+            guard let saved = try decodeActivities(result).first else { throw DemoError.missing }
+            guard saved.activity == entry.activity, saved.durationMinutes == entry.durationMinutes,
+                  saved.fatigue == entry.fatigue, saved.symptoms == entry.symptoms,
+                  abs(saved.startedAt.timeIntervalSince(entry.startedAt)) < 1 else {
+                throw DemoError.invalid("This activity is already saved. Open it from your activity log to make changes.")
+            }
+        }
+    }
+    func deleteActivity(_ id: UUID) async throws {
+        let path = try ownActivityPath(id: id)
+        let expected = sessionEpoch
+        _ = try await request(path, method: "DELETE")
+        guard sessionEpoch == expected else { throw CancellationError() }
+    }
+    private func ownActivityPath(id: UUID? = nil) throws -> String {
+        guard let user = session?.user.id else { throw CancellationError() }
+        let path = "rest/v1/activity_logs?user_id=eq.\(user.uuidString)"
+        return id.map { path + "&id=eq.\($0.uuidString)" } ?? path
     }
     func signOut() async {
         sessionEpoch = UUID()

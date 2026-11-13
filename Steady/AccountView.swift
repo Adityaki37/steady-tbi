@@ -204,6 +204,12 @@ struct AccountView: View {
                             }
                         }
                     }.disabled(busy)
+                    if let userID = client.session?.user.id {
+                        NavigationLink("Activity log") {
+                            ActivityLogView(load: client.loadActivities, save: client.saveActivity, remove: client.deleteActivity)
+                                .id(userID)
+                        }
+                    }
                 }
             } else {
                 profileRolePicker("Account role")

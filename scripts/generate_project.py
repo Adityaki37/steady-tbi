@@ -57,7 +57,7 @@ accent=assets/'AccentColor.colorset'; accent.mkdir(exist_ok=True)
     {'idiom':'universal','appearances':[{'appearance':'luminosity','value':'dark'}],'color':{'color-space':'srgb','components':{'red':'0.573','green':'0.835','blue':'0.761','alpha':'1.000'}}}
 ],'info':{'author':'xcode','version':1}},indent=2)+'\n')
 
-sources = ['SteadyApp.swift','AppStore.swift','ContentView.swift','CloudClient.swift','AccountView.swift','SurvivorProfileView.swift']
+sources = ['SteadyApp.swift','AppStore.swift','ContentView.swift','CloudClient.swift','AccountView.swift','SurvivorProfileView.swift','ActivityLogView.swift']
 objects={}
 def obj(name, body):
     section = body.split('isa = ',1)[1].split(';',1)[0]
