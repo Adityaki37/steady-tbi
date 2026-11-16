@@ -116,13 +116,6 @@ struct SurvivorProfileView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if step != .details {
-                    Section {
-                        Text(step.title).font(.title2.bold()).accessibilityAddTraits(.isHeader)
-                    } header: {
-                        stepProgress
-                    }
-                }
                 switch step {
                 case .details: details
                 case .symptoms: symptoms
@@ -142,7 +135,7 @@ struct SurvivorProfileView: View {
             .id(step)
             .privacySensitive()
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle(step == .details ? step.title : "Survivor profile")
+            .navigationTitle(step.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -244,6 +237,8 @@ struct SurvivorProfileView: View {
             Section {
                 Text("Choose the symptoms you notice. You can add your own under Other or continue with an empty list.")
                 Text("\(draft.symptoms.count) selected").foregroundStyle(Palette.secondaryText)
+            } header: {
+                stepProgress
             }
             Section("Symptom categories") {
                 ForEach(SymptomCategory.allCases) { category in
@@ -322,7 +317,7 @@ struct SurvivorProfileView: View {
                 }
             }
         } header: {
-            Text("First noticed to last noticed")
+            stepProgress
         } footer: {
             Text("Use the arrows to put the symptom you usually notice first at the top. This is your own estimate.")
         }
