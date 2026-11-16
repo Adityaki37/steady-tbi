@@ -1,11 +1,14 @@
 import Foundation
 
 public enum DemoRole: String, Codable, CaseIterable, Identifiable, Hashable {
-    case survivor, caregiver, clinician
+    case survivor, clinician, physician, caregiver
     public var id: String { rawValue }
     public var title: String { rawValue.capitalized }
     public var contribution: RecordKind {
-        switch self { case .survivor: return .symptoms; case .caregiver: return .observations; case .clinician: return .notes }
+        switch self { case .survivor: return .symptoms; case .caregiver: return .observations; case .clinician, .physician: return .notes }
+    }
+    public var initialJournalKind: RecordKind {
+        self == .physician ? .symptoms : contribution
     }
 }
 
@@ -133,15 +136,20 @@ private struct DemoState: Codable {
     var checkIn: String?
     var activities: [ActivityEntry]?
 
+    static let clinicalGrants: [RecordKind: Grant] = [
+        .symptoms: Grant(read: true, add: false, edit: false, delete: false),
+        .observations: Grant(read: true, add: false, edit: false, delete: false),
+        .attachments: Grant(read: true, add: false, edit: false, delete: false),
+        .notes: .all
+    ]
+
     static func seed() -> DemoState {
         var permissions = Dictionary(uniqueKeysWithValues: DemoRole.allCases.map { role in
             (role, Dictionary(uniqueKeysWithValues: RecordKind.allCases.map { ($0, role == .survivor ? Grant.all : Grant.none) }))
         })
         permissions[.caregiver]?[.observations] = .all
-        permissions[.clinician]?[.symptoms]?.read = true
-        permissions[.clinician]?[.observations]?.read = true
-        permissions[.clinician]?[.attachments]?.read = true
-        permissions[.clinician]?[.notes] = .all
+        permissions[.clinician] = clinicalGrants
+        permissions[.physician] = clinicalGrants
         let day = Date(timeIntervalSince1970: 1793113200)
         func record(_ kind: RecordKind, _ author: DemoRole, _ title: String, _ body: String, severity: Int? = nil, file: DemoAttachment? = nil) -> DemoRecord {
             DemoRecord(id: UUID(), kind: kind, author: author, title: title, body: body, severity: severity,
@@ -195,7 +203,10 @@ private struct DemoState: Codable {
     public init(persistence: DemoPersistence, now: @escaping () -> Date = Date.init) throws {
         self.persistence = persistence; self.now = now
         if let data = try persistence.load() {
-            let loaded = try JSONDecoder().decode(DemoState.self, from: data)
+            var loaded = try JSONDecoder().decode(DemoState.self, from: data)
+            if loaded.permissions[.physician] == nil {
+                loaded.permissions[.physician] = DemoState.clinicalGrants
+            }
             try loaded.validate(); state = loaded
         } else {
             let seeded = DemoState.seed(); try seeded.validate()

@@ -28,40 +28,52 @@ extension Section where Parent == SectionHeader, Content: View, Footer == EmptyV
 
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var accounts = false
-    @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var previewingDemo = false
+    @State private var demoTab: DemoTab = .settings
+
+    private enum DemoTab: Hashable {
+        case today, journal, files, control, settings
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                // The header is outside any ScrollView, so every piece of text wraps instead of truncating,
-                // and at accessibility sizes the brand and demo label stack vertically.
-                let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
-                layout {
-                    Label("Steady", systemImage: "leaf").font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
-                    if !typeSize.isAccessibilitySize { Spacer() }
-                    Text("FICTIONAL DEMO").font(.caption.bold()).foregroundStyle(Palette.secondaryText).fixedSize(horizontal: false, vertical: true)
+        AccountView {
+            demoTab = .settings
+            previewingDemo = true
+        }
+        .fullScreenCover(isPresented: $previewingDemo) {
+            if let error = store.loadFailure {
+                NavigationStack {
+                    RecoveryView(message: error)
+                        .toolbar { Button("Back to sign in") { previewingDemo = false } }
                 }
-                Toggle("Accounts and sharing", isOn: $accounts).font(.subheadline).fixedSize(horizontal: false, vertical: true)
-                if !accounts { Picker("Demo role", selection: $store.role) {
-                    ForEach(DemoRole.allCases) { Text($0.title).tag($0) }
-                }.pickerStyle(.segmented).accessibilityIdentifier("rolePicker").accessibilityHint("Switches a fictional role on this device. This is not authentication.") }
-                if !accounts {
-                    Text("One device · role switcher, not secure sign-in").font(.caption).foregroundStyle(Palette.secondaryText).fixedSize(horizontal: false, vertical: true)
-                }
-            }.padding().background(Palette.surface)
-            if accounts {
-                AccountView()
-            } else if let error = store.loadFailure {
-                RecoveryView(message: error)
             } else {
-                TabView {
-                    NavigationStack { HomeView() }.tabItem { Label("Today", systemImage: "sun.max") }
-                    NavigationStack { JournalView() }.tabItem { Label("Journal", systemImage: "book.closed") }
-                    NavigationStack { FilesView() }.tabItem { Label("Files", systemImage: "folder") }
-                    NavigationStack { SharingView() }.tabItem { Label("Control", systemImage: "hand.raised") }
-                }.id(store.role) // Changing identity destroys role-specific editors and previews.
+                TabView(selection: $demoTab) {
+                    NavigationStack { HomeView() }.tabItem { Label("Today", systemImage: "sun.max") }.tag(DemoTab.today)
+                    NavigationStack { JournalView() }.tabItem { Label("Journal", systemImage: "book.closed") }.tag(DemoTab.journal)
+                    NavigationStack { FilesView() }.tabItem { Label("Files", systemImage: "folder") }.tag(DemoTab.files)
+                    NavigationStack { SharingView() }.tabItem { Label("Control", systemImage: "hand.raised") }.tag(DemoTab.control)
+                    demoSettings.tabItem { Label("Demo settings", systemImage: "gearshape") }.tag(DemoTab.settings)
+                }
+                .id(store.role)
             }
-        }.background(Palette.background)
+        }
+    }
+
+    private var demoSettings: some View {
+        NavigationStack {
+            Form {
+                Section("Choose a fictional view") {
+                    ForEach(DemoRole.allCases) { role in
+                        Button("Preview \(role.title)") {
+                            store.role = role
+                            demoTab = .today
+                        }
+                    }
+                }
+                Button("Back to sign in") { previewingDemo = false }
+            }
+            .navigationTitle("Demo settings")
+        }
     }
 }
 
@@ -108,7 +120,7 @@ struct HomeView: View {
                     Label("\(store.role.title) view", systemImage: store.role.contribution.symbol).font(.headline)
                     Text(roleDescription)
                     if store.can(store.role.contribution, .add) {
-                        Button(store.role == .survivor ? "Log a symptom" : store.role == .caregiver ? "Add an observation" : "Add a clinician note") { editor = true }
+                        Button(contributionTitle) { editor = true }
                             .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("primaryAddButton")
                     } else { Label("Adding is off for this role", systemImage: "lock").foregroundStyle(Palette.secondaryText) }
                     if store.role == .survivor {
@@ -156,8 +168,18 @@ struct HomeView: View {
     private var roleDescription: String {
         switch store.role {
         case .survivor: return "A quick note is enough. You can rate an experience from 1 (mild) to 5 (intense) and describe what was happening."
-        case .caregiver: return "Describe what you noticed in your own words. By default, symptom history stays private to the survivor and clinician."
+        case .caregiver: return "Describe what you noticed in your own words."
         case .clinician: return "Review the fictional information shared with you and leave a note. This demo is not a clinical record system."
+        case .physician: return "Review shared symptoms and files before adding a note for the survivor."
+        }
+    }
+
+    private var contributionTitle: String {
+        switch store.role {
+        case .survivor: return "Log a symptom"
+        case .caregiver: return "Add an observation"
+        case .clinician: return "Add a clinician note"
+        case .physician: return "Add a physician note"
         }
     }
 }
@@ -196,7 +218,7 @@ struct JournalView: View {
                 }
             }
         }.navigationTitle("Journal")
-            .onAppear { kind = store.role.contribution }
+            .onAppear { kind = store.role.initialJournalKind }
             .sheet(isPresented: $editor) { EditorView(kind: kind, existing: nil) }
     }
 }
@@ -422,7 +444,7 @@ struct SharingView: View {
                 Text("Read and add are independent. Editing or deleting also requires read access. A granted edit/delete permission covers all entries of that type, not just the role’s own entries.")
             }
             if store.role == .survivor {
-                ForEach([DemoRole.caregiver, .clinician]) { target in
+                ForEach(DemoRole.allCases.filter { $0 != .survivor }) { target in
                     Section(target.title) {
                         ForEach(RecordKind.allCases) { kind in
                             DisclosureGroup {

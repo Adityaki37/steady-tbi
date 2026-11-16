@@ -40,7 +40,7 @@ final class DemoRepositoryTests: XCTestCase {
 
     @MainActor func testEveryPermissionCombination() async throws {
         var combinations = 0
-        for role in [DemoRole.caregiver, .clinician] {
+        for role in [DemoRole.caregiver, .clinician, .physician] {
             for kind in RecordKind.allCases {
                 for bits in 0..<16 {
                     let repository = try DemoRepository(persistence: MemoryPersistence())
@@ -70,7 +70,7 @@ final class DemoRepositoryTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(combinations, 128)
+        XCTAssertEqual(combinations, 192)
     }
 
     @MainActor func testCaregiverContributesWithNoHistoryRead() async throws {
@@ -85,7 +85,7 @@ final class DemoRepositoryTests: XCTestCase {
     @MainActor func testOnlySurvivorControlsPermissionsAndReset() async throws {
         let memory = MemoryPersistence()
         let repository = try DemoRepository(persistence: memory)
-        for role in [DemoRole.caregiver, .clinician] {
+        for role in [DemoRole.caregiver, .clinician, .physician] {
             XCTAssertThrowsError(try repository.grants(role))
             XCTAssertThrowsError(try repository.setGrant(actor: role, target: .caregiver, kind: .symptoms, action: .read, value: true))
             XCTAssertThrowsError(try repository.reset(role))

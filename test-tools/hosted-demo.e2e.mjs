@@ -6,7 +6,8 @@ const key = process.env.SUPABASE_PUBLISHABLE_KEY;
 assert.ok(base && key?.startsWith('sb_publishable_'), 'Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY');
 const run = randomBytes(7).toString('hex');
 const password = randomBytes(24).toString('base64url');
-const roles = ['survivor', 'caregiver', 'clinician', 'new-survivor'];
+const memberRoles = ['caregiver', 'clinician', 'physician'];
+const roles = ['survivor', ...memberRoles, 'new-survivor'];
 const people = {};
 
 async function api(path, { token, body, method = body === undefined ? 'GET' : 'POST', prefer = 'return=representation' } = {}) {
@@ -40,7 +41,7 @@ for (const path of ['auth/v1/signup', 'rest/v1/rpc/reserve_demo_signup']) {
   const direct = await api(path, { body: path.startsWith('auth/') ? { email: `qa-direct-${run}@steady-demo.example`, password } : {} });
   assert.ok(direct.status >= 400, 'direct access is denied');
 }
-console.log('PASS: public signup and sign-in for all three demo roles');
+console.log('PASS: public signup and sign-in for every demo role');
 
 const circle = expect(await rpc('survivor', 'create_circle', { n: 'Fictional QA circle' }), 200, 'create circle');
 const entry = { id: randomUUID(), circle_id: circle, author_id: people.survivor.id, kind: 'symptoms', title: 'Fictional headache', severity: 2 };
@@ -52,7 +53,7 @@ const profile = {
 expect(await api('rest/v1/survivor_profiles?on_conflict=user_id', {
   ...auth('survivor'), body: profile, prefer: 'resolution=merge-duplicates,return=minimal'
 }), 201, 'save profile');
-for (const role of ['caregiver', 'clinician']) {
+for (const role of memberRoles) {
   assert.deepEqual(expect(await api('rest/v1/circles?select=id', auth(role)), 200, 'pre-invitation circles'), []);
   const code = expect(await rpc('survivor', 'invite_member', { c: circle, email: people[role].email, r: role }), 200, 'create invitation');
   if (role === 'caregiver') expect(await rpc('clinician', 'accept_invite', { token: code }), 403, 'wrong user denied');
@@ -60,7 +61,7 @@ for (const role of ['caregiver', 'clinician']) {
   assert.equal(expect(await rpc(role, 'my_role', { c: circle }), 200, 'assigned circle role'), role);
   expect(await rpc(role, 'accept_invite', { token: code }), 403, 'invitation replay denied');
   const records = expect(await api(`rest/v1/records?id=eq.${entry.id}&select=title`, auth(role)), 200, 'journal read');
-  assert.deepEqual(records, role === 'clinician' ? [{ title: entry.title }] : []);
+  assert.deepEqual(records, role === 'caregiver' ? [] : [{ title: entry.title }]);
   assert.deepEqual(expect(await rpc(role, 'shared_survivor_profile', { c: circle }), 200, 'profile private by default'), []);
   const member = `rest/v1/circle_members?circle_id=eq.${circle}&user_id=eq.${people[role].id}`;
   expect(await api(member, { ...auth('survivor'), method: 'PATCH', body: { shares_survivor_profile: true } }), 200, 'share profile');
@@ -71,11 +72,18 @@ for (const role of ['caregiver', 'clinician']) {
   expect(await api(member, { ...auth('survivor'), method: 'PATCH', body: { shares_survivor_profile: false } }), 200, 'revoke profile');
   assert.deepEqual(expect(await rpc(role, 'shared_survivor_profile', { c: circle }), 200, 'revocation takes effect'), []);
 }
-console.log('PASS: recipient-bound invitations, journal permissions, profile sharing and revocation for both member roles');
+await api(`rest/v1/circle_permissions?circle_id=eq.${circle}&role=eq.physician&kind=eq.symptoms`, {
+  ...auth('survivor'), method: 'PATCH', body: { can_read: false }
+}).then(response => expect(response, 200, 'revoke physician journal read'));
+for (const role of ['clinician', 'physician']) {
+  const records = expect(await api(`rest/v1/records?id=eq.${entry.id}&select=title`, auth(role)), 200, 'independent journal access');
+  assert.deepEqual(records, role === 'clinician' ? [{ title: entry.title }] : []);
+}
+console.log('PASS: invitations, independent journal grants, profile sharing and revocation for every member role');
 
 const activity = { id: randomUUID(), user_id: people.survivor.id, activity: 'Fictional reading', started_at: new Date().toISOString(), duration_minutes: 20, fatigue: 3 };
 expect(await api('rest/v1/activity_logs', { ...auth('survivor'), body: activity }), 201, 'save private activity');
-for (const role of ['caregiver', 'clinician']) {
+for (const role of memberRoles) {
   assert.deepEqual(expect(await api(`rest/v1/activity_logs?id=eq.${activity.id}`, auth(role)), 200, 'member cannot see activity'), []);
 }
 console.log('PASS: activity entries remain private');

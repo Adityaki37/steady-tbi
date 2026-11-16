@@ -16,6 +16,10 @@ final class SteadyUITests: XCTestCase {
     private func launch(extraArguments: [String] = []) {
         app.launchArguments += extraArguments
         app.launch()
+        let settings = app.buttons["openDemoSettings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20), "Signed-out demo settings did not appear")
+        settings.tap()
+        chooseDemoRole("Survivor")
         XCTAssertTrue(app.buttons["primaryAddButton"].waitForExistence(timeout: 20), "Today screen did not appear")
     }
 
@@ -32,10 +36,15 @@ final class SteadyUITests: XCTestCase {
     }
 
     private func switchRole(_ title: String) {
-        let button = app.segmentedControls["rolePicker"].buttons[title]
+        openTab("Demo settings")
+        chooseDemoRole(title)
+        XCTAssertTrue(app.tabBars.buttons["Journal"].waitForExistence(timeout: 10))
+    }
+
+    private func chooseDemoRole(_ title: String) {
+        let button = app.buttons["Preview \(title)"]
         XCTAssertTrue(button.waitForExistence(timeout: 10), "Role button \(title) missing")
         button.tap()
-        XCTAssertTrue(app.tabBars.buttons["Journal"].waitForExistence(timeout: 10))
     }
 
     private func openTab(_ title: String) {
@@ -112,6 +121,19 @@ final class SteadyUITests: XCTestCase {
     }
 
     // MARK: Flows
+
+    func testPhysicianPreviewIsOnlyAvailableThroughDemoSettings() {
+        launch()
+        XCTAssertFalse(app.buttons["Preview Physician"].exists)
+        switchRole("Physician")
+        XCTAssertTrue(app.buttons["primaryAddButton"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons["primaryAddButton"].label, "Add a physician note")
+        XCTAssertFalse(app.buttons["Activity log"].exists)
+        openTab("Demo settings")
+        app.buttons["Back to sign in"].tap()
+        XCTAssertTrue(app.buttons["openDemoSettings"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.tabBars.buttons["Journal"].exists)
+    }
 
     func testLogAndReopenAnActivity() {
         launch()

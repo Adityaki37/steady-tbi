@@ -121,7 +121,7 @@ final class CloudClientTests: XCTestCase {
         """
         let legacy = try decoder.decode(CloudUser.self, from: Data(account.utf8))
         XCTAssertNil(legacy.profileRole)
-        for role in ["survivor", "caregiver", "clinician"] {
+        for role in ["survivor", "clinician", "physician", "caregiver"] {
             let json = """
             {"id":"\(legacy.id)","user_metadata":{"steady_role":"\(role)","email_verified":true}}
             """

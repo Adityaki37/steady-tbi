@@ -94,7 +94,14 @@ struct RoleGrant: Codable, Identifiable {
 }
 
 private enum SessionKeychain {
-    static let service = "Steady.AccountSession.v1"
+    static let service: String = {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-STEADY_UITEST") {
+            return "Steady.UITest.AccountSession.v1"
+        }
+        #endif
+        return "Steady.AccountSession.v1"
+    }()
     static func query(_ account: String) -> [String: Any] { [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account] }
     static func load(_ account: String) throws -> CloudSession? {
         guard let data = try read(account) else { return nil }
@@ -407,7 +414,7 @@ private enum SessionKeychain {
             let checkData = try await request("rest/v1/check_ins?circle_id=eq.\(id.uuidString)&order=created_at.desc&limit=25")
             let newCheckIns = try JSONDecoder().decode([CloudCheckIn].self, from: checkData)
             var newSharedProfile: SharedSurvivorProfile?
-            if (assigned == "caregiver" || assigned == "clinician"), let user = session?.user.id {
+            if let assigned, assigned != DemoRole.survivor.rawValue, let user = session?.user.id {
                 let membership = try await request("rest/v1/circle_members?circle_id=eq.\(id.uuidString)&user_id=eq.\(user.uuidString)")
                 if try JSONDecoder().decode([CloudMember].self, from: membership).first?.shares_survivor_profile == true {
                     let data = try await rpc("shared_survivor_profile", ["c": id.uuidString])

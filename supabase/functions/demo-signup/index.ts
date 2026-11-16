@@ -32,7 +32,7 @@ Deno.serve(async (request) => {
   const { username, password, role } = body ?? {};
   if (typeof username !== "string" || !/^[a-z0-9][a-z0-9_-]{2,31}$/.test(username) ||
     typeof password !== "string" || password.length < 10 || new TextEncoder().encode(password).length > 72 ||
-    !["survivor", "caregiver", "clinician"].includes(role)) {
+    !["survivor", "caregiver", "clinician", "physician"].includes(role)) {
     return reply(400, "Choose a valid username, a demo password of at least 10 characters, and an account role.");
   }
 

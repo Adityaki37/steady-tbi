@@ -3,6 +3,7 @@ import SteadyCore
 import UniformTypeIdentifiers
 
 struct AccountView: View {
+    let openDemo: () -> Void
     @StateObject private var client = CloudClient()
     @ObservedObject private var push = PushRegistrar.shared
     @Environment(\.scenePhase) private var scenePhase
@@ -26,6 +27,7 @@ struct AccountView: View {
     @State private var setupErrorFor: UUID?
     @State private var setupRetry = UUID()
     private var hostedDemo: Bool { client.config?.isHostedDemo == true }
+    private var accountRole: DemoRole? { client.session?.user.profileRole }
     private struct ProfileEditor: Identifiable {
         let id: UUID
         let profile: SurvivorProfile?
@@ -41,31 +43,53 @@ struct AccountView: View {
                 if client.config == nil { setupSection }
                 else if client.session == nil { signInSection }
                 else {
+                    if let accountRole {
+                        if accountRole == .survivor { survivorSection }
+                        circlesSection
+                        if client.circles.isEmpty, accountRole != .survivor { joinSection }
+                        if client.circleID != nil {
+                            if accountRole == .survivor, client.role == "survivor" {
+                                Section(secondary: "Sharing") {
+                                    NavigationLink("Manage sharing") { sharingView }
+                                }
+                            }
+                            if let profile = client.sharedSurvivorProfile {
+                                Section("Shared survivor profile") {
+                                    SharedSurvivorProfileView(profile: profile)
+                                }
+                            }
+                            journalSection
+                            if accountRole == .survivor || accountRole == .caregiver { checkInSection }
+                        }
+                    }
                     accountSection
-                    circlesSection
-                    if client.circles.isEmpty, client.session?.user.profileRole != nil { joinSection }
-                    if client.circleID != nil {
-                        if client.role == "survivor" {
-                            Section(secondary: "Sharing") {
-                                NavigationLink("Manage sharing") { sharingView }
-                            }
-                        }
-                        if let profile = client.sharedSurvivorProfile {
-                            Section("Shared survivor profile") {
-                                SharedSurvivorProfileView(profile: profile)
-                            }
-                        }
-                        journalSection
-                        checkInSection
+                }
+                if client.session == nil {
+                    Section {
+                        Button("Demo settings", action: openDemo)
+                            .disabled(busy)
+                            .accessibilityIdentifier("openDemoSettings")
+                    } footer: {
+                        Text("Use fictional information in Steady.")
                     }
                 }
-                Section(secondary: "Fictional-data prototype") {
-                    Text("Use fictional records only. Account mode syncs with the configured backend. Local demo data is separate and is never uploaded automatically.")
-                    Text("Check-ins sync in the app while open (every 15 seconds or on refresh), which remains the fallback. A caregiver can also send an \u{201C}I noticed a possible symptom\u{201D} prompt. Live cross-device Apple push requires a paid Apple Developer account and configured APNs; the entitlement is set for development only.").font(.footnote).foregroundStyle(Palette.secondaryText)
-                    Text("After a network error, shared history is cleared until a successful refresh. Previously viewed or exported information cannot be taken back by revocation.").font(.footnote).foregroundStyle(Palette.secondaryText)
+            }.navigationTitle(accountRole.map { "\($0.title) workspace" } ?? "Steady").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    if client.session != nil {
+                        ToolbarItem(placement: .primaryAction) {
+                            Menu("Account", systemImage: "person.crop.circle") {
+                                Button("Sign out", role: .destructive) {
+                                    email = ""; password = ""; creating = false
+                                    Task { await client.signOut() }
+                                }
+                            }
+                            .disabled(busy)
+                        }
+                    }
                 }
-            }.navigationTitle("Separate accounts").navigationBarTitleDisplayMode(.inline)
-                .refreshable { await perform { try await client.loadCircles() } }
+                .refreshable {
+                    if client.session != nil { await perform { try await client.loadCircles() } }
+                }
                 .sheet(isPresented: $editor) { CloudEditor(client: client, kind: kind, existing: nil) }
                 .sheet(item: $editing) { CloudEditor(client: client, kind: RecordKind(rawValue: $0.kind) ?? .notes, existing: $0) }
                 .sheet(item: $preview) { item in
@@ -106,8 +130,8 @@ struct AccountView: View {
                 .onChange(of: client.circleID) { _, _ in
                     editing = nil; editor = false; preview = nil; invitationToken = ""; inviteEmail = ""
                 }
-                .onChange(of: client.role) { _, role in
-                    if let role, let assigned = DemoRole(rawValue: role) { kind = assigned.contribution }
+                .onChange(of: accountRole, initial: true) { _, role in
+                    kind = role?.initialJournalKind ?? .symptoms
                 }
                 .onChange(of: push.deviceToken) { _, _ in Task { await registerPushTokenIfPossible() } }
         }
@@ -115,7 +139,7 @@ struct AccountView: View {
         .onChange(of: client.session?.user.id) { _, userID in
             editing = nil; editor = false; preview = nil; deleting = nil; importing = false
             joiningAnotherCircle = false; acceptToken = ""; inviteEmail = ""; invitationToken = ""
-            inviteRole = .caregiver; kind = client.role.flatMap(DemoRole.init(rawValue:))?.contribution ?? .symptoms
+            inviteRole = .caregiver
             profileRole = nil
             if profileEditor?.id != userID { profileEditor = nil }
             if setupErrorFor != userID { setupErrorFor = nil }
@@ -155,7 +179,6 @@ struct AccountView: View {
     }
     private var setupSection: some View {
         Section(secondary: "Backend setup is pending") {
-            Label("The local demo works now", systemImage: "checkmark.circle")
             Text("This build is missing its backend settings. Download the latest Steady project or follow backend/README.md to configure a test backend.")
         }
     }
@@ -203,47 +226,44 @@ struct AccountView: View {
         case .survivor: return "Create your own circle and choose what to share."
         case .caregiver: return "Accept a survivor’s invitation to share observations and suggest check-ins."
         case .clinician: return "Accept a survivor’s invitation to review shared records and contribute notes."
+        case .physician: return "Accept a survivor’s invitation to review their shared symptoms, injury details, and files."
+        }
+    }
+    private var survivorSection: some View {
+        Section(secondary: "Your recovery") {
+            if let setupErrorFor, setupErrorFor == client.session?.user.id {
+                Text("Couldn’t check your survivor setup. Try again when you’re connected.")
+                    .font(.footnote).foregroundStyle(Palette.secondaryText)
+                Button("Retry setup") { self.setupErrorFor = nil; setupRetry = UUID() }
+            }
+            Button("Survivor profile") {
+                Task {
+                    await perform {
+                        guard let id = client.session?.user.id else { return }
+                        let profile = try await client.loadSurvivorProfile()
+                        guard client.session?.user.id == id else { return }
+                        setupErrorFor = nil
+                        profileEditor = ProfileEditor(id: id, profile: profile)
+                    }
+                }
+            }.disabled(busy)
+            if let userID = client.session?.user.id {
+                NavigationLink("Activity log") {
+                    ActivityLogView(load: client.loadActivities, save: client.saveActivity, remove: client.deleteActivity)
+                        .id(userID)
+                }
+            }
         }
     }
     private var accountSection: some View {
         Section(secondary: "Account") {
             Text(accountLabel(client.session?.user.email ?? "Signed in"))
-            if let accountRole = client.session?.user.profileRole {
-                LabeledContent("Account role", value: accountRole.title)
-                if accountRole == .survivor {
-                    if let setupErrorFor, setupErrorFor == client.session?.user.id {
-                        Text("Couldn’t check your survivor setup. Try again when you’re connected.")
-                            .font(.footnote).foregroundStyle(Palette.secondaryText)
-                        Button("Retry setup") { self.setupErrorFor = nil; setupRetry = UUID() }
-                    }
-                    Button("Survivor profile") {
-                        Task {
-                            await perform {
-                                guard let id = client.session?.user.id else { return }
-                                let profile = try await client.loadSurvivorProfile()
-                                guard client.session?.user.id == id else { return }
-                                setupErrorFor = nil
-                                profileEditor = ProfileEditor(id: id, profile: profile)
-                            }
-                        }
-                    }.disabled(busy)
-                    if let userID = client.session?.user.id {
-                        NavigationLink("Activity log") {
-                            ActivityLogView(load: client.loadActivities, save: client.saveActivity, remove: client.deleteActivity)
-                                .id(userID)
-                        }
-                    }
-                }
-            } else {
+            if accountRole == nil {
                 Text("Choose your role to finish setting up this account.").font(.footnote)
                 profileRolePicker("Account role")
                 Button("Save account role") {
                     Task { await perform { if let profileRole { try await client.saveProfileRole(profileRole) } } }
                 }.disabled(busy || profileRole == nil)
-            }
-            Button("Sign out", role: .destructive) {
-                email = ""; password = ""; creating = false
-                Task { await client.signOut() }
             }
         }
     }
@@ -296,10 +316,10 @@ struct AccountView: View {
         }.navigationTitle("Manage sharing")
     }
     private var journalSection: some View {
-        Section(secondary: "Shared journal") {
+        Section(secondary: accountRole == .physician ? "Survivor records" : "Shared journal") {
             Picker("Type", selection: $kind) { ForEach(RecordKind.allCases) { Text($0.title).tag($0) } }
             if client.can(kind, .add) {
-                Button(kind == .attachments ? "Import a fictional file" : "Add fictional entry") { if kind == .attachments { importing = true } else { editor = true } }.disabled(busy)
+                Button(journalAddTitle) { if kind == .attachments { importing = true } else { editor = true } }.disabled(busy)
                 if kind == .attachments {
                     Button("Upload bundled fictional MRI illustration") {
                         guard let url = Bundle.main.url(forResource: "Fictional-brain-MRI", withExtension: "png", subdirectory: "SteadyResources") else { return }
@@ -307,8 +327,8 @@ struct AccountView: View {
                     }.disabled(busy)
                     Text("Clearly labeled fictional illustration, not a real patient scan. Steady does not diagnose or interpret imaging. The survivor controls who may add files; any member the survivor authorizes (including a clinician) can upload one here.").font(.caption).foregroundStyle(Palette.secondaryText)
                 }
-            } else if kind == .attachments, client.role == "clinician" {
-                Text("To upload a fictional MRI, ask the survivor to grant Files → Add for the clinician role. The survivor controls access; uploads stay disabled until they turn it on.").font(.caption).foregroundStyle(Palette.secondaryText)
+            } else if kind == .attachments, accountRole == .clinician || accountRole == .physician {
+                Text("Ask the survivor to grant Files → Add to upload a fictional file.").font(.caption).foregroundStyle(Palette.secondaryText)
             }
             if !client.can(kind, .read) {
                 Label("History is private", systemImage: "lock.shield")
@@ -335,6 +355,14 @@ struct AccountView: View {
             }
         }
     }
+    private var journalAddTitle: String {
+        switch kind {
+        case .attachments: return "Import a fictional file"
+        case .notes where accountRole == .physician: return "Add a physician note"
+        case .notes where accountRole == .clinician: return "Add a clinician note"
+        default: return "Add fictional entry"
+        }
+    }
     private var accessSection: some View {
         Section(secondary: "What each role can access") {
             Text("These permissions apply to everyone with that role in this circle. Review them before sharing an invitation. Editing or deleting also requires read access.").font(.footnote)
@@ -349,12 +377,13 @@ struct AccountView: View {
         }
     }
     private var invitationsSection: some View {
-        Section(secondary: "Invite a caregiver or clinician") {
+        Section(secondary: "Invite someone to your circle") {
             TextField(hostedDemo ? "Recipient’s demo username" : "Recipient account email", text: $inviteEmail)
                 .keyboardType(hostedDemo ? .asciiCapable : .emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
             Picker("Role in your circle", selection: $inviteRole) {
-                Text("Caregiver").tag(DemoRole.caregiver)
-                Text("Clinician").tag(DemoRole.clinician)
+                ForEach(DemoRole.allCases.filter { $0 != .survivor }) { role in
+                    Text(role.title).tag(role)
+                }
             }
             if hostedDemo {
                 Text("Ask the recipient to create a demo account first, then enter their username here.")

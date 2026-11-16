@@ -1,9 +1,9 @@
 {
   "engine": "PGlite 0.5.13 (PostgreSQL WASM)",
-  "assertions": 1133,
-  "permissionCombinations": 128,
+  "assertions": 1662,
+  "permissionCombinations": 192,
   "status": "PASS",
-  "schemaSHA256": "fddd056a6fd5eb2de8f2cb22e285532117b10d672807c587ee62ac8386f3d39d",
+  "schemaSHA256": "b7fcc6e3d04c77c4cd3af92940b583ee778c3074c66b340437c0e0d3fa87c13b",
   "limitations": [
     "Supabase Auth and Storage service tables are test doubles",
     "No Xcode compile, Swift test execution, hosted service or iPhone run performed"

@@ -12,6 +12,7 @@ const users = {
   survivor: '00000000-0000-4000-8000-000000000001',
   caregiver: '00000000-0000-4000-8000-000000000002',
   clinician: '00000000-0000-4000-8000-000000000003',
+  physician: '00000000-0000-4000-8000-000000000006',
   outsider: '00000000-0000-4000-8000-000000000004',
   unconfirmed: '00000000-0000-4000-8000-000000000005'
 };
@@ -52,8 +53,13 @@ try {
   for (const [name, uuid] of Object.entries(users)) await db.query('insert into auth.users values ($1,$2,$3)', [uuid, `${name}@example.test`, name === 'unconfirmed' ? null : '2026-10-28T12:00:00Z']);
   const migrationDirectory = new URL('../supabase/migrations/', import.meta.url);
   const migrations = (await readdir(migrationDirectory)).filter(name => name.endsWith('.sql')).sort();
-  const schema = (await Promise.all(migrations.map(name => readFile(new URL(name, migrationDirectory), 'utf8')))).join('\n');
-  await db.exec(schema);
+  const sql = await Promise.all(migrations.map(name => readFile(new URL(name, migrationDirectory), 'utf8')));
+  const physicianMigration = migrations.findIndex(name => name.endsWith('_physician_role.sql'));
+  assert.ok(physicianMigration > 0);
+  await db.exec(sql.slice(0, physicianMigration).join('\n'));
+  const circle = (await as('survivor', "select public.create_circle('Fictional Alex') as id")).rows[0].id;
+  await db.exec(sql.slice(physicianMigration).join('\n'));
+  check((await as('survivor', "select * from public.circle_permissions where circle_id=$1 and role='physician'", [circle])).rows.length, 4, 'existing circles receive physician grants');
   console.log('PASS: migration applies in PostgreSQL (PGlite)');
   await denied('anon', 'select public.reserve_demo_signup()');
   await denied('survivor', 'select public.reserve_demo_signup()');
@@ -69,10 +75,10 @@ try {
     commit;`);
   check((await db.query("select count(*)::int as count from auth.users where email='managed@steady-demo.example'")).rows[0].count, 1, 'admin can set the demo identity in the same transaction');
   await assert.rejects(db.query("update auth.users set email='changed@example.test' where email='managed@steady-demo.example'"), /cannot be changed/);
-  const circle = (await as('survivor', "select public.create_circle('Fictional Alex') as id")).rows[0].id;
   const other = (await as('outsider', "select public.create_circle('Other fictional circle') as id")).rows[0].id;
+  check((await as('outsider', "select * from public.circle_permissions where circle_id=$1 and role='physician'", [other])).rows.length, 4, 'new circles receive physician grants');
   let spareCaregiverToken;
-  for (const role of ['caregiver','clinician']) {
+  for (const role of ['caregiver','clinician','physician']) {
     const token = (await as('survivor', 'select public.invite_member($1,$2,$3) as token', [circle, `${role}@example.test`, role])).rows[0].token;
     if(role==='caregiver') spareCaregiverToken=(await as('survivor','select public.invite_member($1,$2,$3) as token',[circle,'caregiver@example.test','caregiver'])).rows[0].token;
     await denied('outsider', 'select public.accept_invite($1)', [token]);
@@ -85,7 +91,7 @@ try {
   const ranked = [{category: 'cognitive', name: 'Mental fatigue'}, {category: 'balance', name: 'Dizziness'}];
   await as('survivor', "insert into public.survivor_profiles(user_id,display_name,injury_date,symptoms) values($1,'Fictional survivor','2025-06-20',$2)", [users.survivor, JSON.stringify(ranked)]);
   check((await as('survivor', 'select symptoms from public.survivor_profiles')).rows[0].symptoms, ranked, 'profile preserves symptom order');
-  for (const role of ['caregiver', 'clinician']) {
+  for (const role of ['caregiver', 'clinician', 'physician']) {
     check((await as(role, 'select * from public.survivor_profiles')).rows.length, 0, 'circle member cannot read private profile');
     check((await as(role, "update public.survivor_profiles set display_name='Changed' returning user_id")).rows.length, 0, 'circle member cannot edit private profile');
     await denied(role, "insert into public.survivor_profiles(user_id,display_name) values($1,'Changed')", [users.survivor]);
@@ -97,7 +103,7 @@ try {
   const sharedProfileSQL = 'select * from public.shared_survivor_profile($1)';
   const profileGrantSQL = 'update public.circle_members set shares_survivor_profile=$1 where circle_id=$2 and user_id=$3 returning shares_survivor_profile';
   await denied('anon', sharedProfileSQL, [circle]);
-  for (const role of ['caregiver', 'clinician']) {
+  for (const role of ['caregiver', 'clinician', 'physician']) {
     check((await as(role, sharedProfileSQL, [circle])).rows.length, 0, 'members start with profile sharing off');
     check((await as(role, profileGrantSQL, [true, circle, users[role]])).rows.length, 0, 'members cannot enable their own access');
     check((await as('survivor', profileGrantSQL, [true, circle, users[role]])).rows, [{shares_survivor_profile: true}], 'survivor grants access to one member');
@@ -131,9 +137,9 @@ try {
   check((await as('clinician','select * from public.records where id=$1',[symptomID])).rows.length,1,'clinician default symptom read');
   await denied('caregiver',"insert into public.records(circle_id,kind,author_id,title) values($1,'notes',$2,'Denied')",[circle,users.caregiver]);
 
-  // Execute all 16 CRUD combinations, for both shared roles and every kind.
+  // Execute all 16 CRUD combinations for every member role and record kind.
   let combinations=0;
-  for (const role of ['caregiver','clinician']) for (const kind of kinds) for (let bits=0;bits<16;bits++) {
+  for (const role of ['caregiver','clinician','physician']) for (const kind of kinds) for (let bits=0;bits<16;bits++) {
     const read=!!(bits&1), add=!!(bits&2), edit=read&&!!(bits&4), del=read&&!!(bits&8);
     await as('survivor','update public.circle_permissions set can_read=$1,can_add=$2,can_edit=$3,can_delete=$4 where circle_id=$5 and role=$6 and kind=$7',[read,add,!!(bits&4),!!(bits&8),circle,role,kind]);
     for (const [action,expected] of Object.entries({read,add,edit,delete:del})) check((await as(role,'select private.allowed($1,$2,$3) as allowed',[circle,kind,action])).rows[0].allowed,expected,`${role}/${kind}/${bits}/${action}`);
@@ -148,7 +154,7 @@ try {
     check((await as(role,'delete from public.records where id=$1 returning id',[recordID])).rows.length,del?1:0,'DELETE matches read+delete');
     combinations++;
   }
-  check(combinations,128,'all permission combinations executed');
+  check(combinations,192,'all permission combinations executed');
   // Add-only records must work without returning private rows.
   await as('survivor',"update public.circle_permissions set can_read=false,can_add=true where circle_id=$1 and role='caregiver'",[circle]);
   await as('caregiver',"insert into public.records(circle_id,kind,author_id,title) values($1,'observations',$2,'Private history contribution')",[circle,users.caregiver]);
@@ -204,7 +210,7 @@ try {
   check((await as('survivor','delete from public.device_tokens where token=$1 returning token',['survivor-token-aaaa'])).rows.length,1,'user can delete their own device token');
   // Clinician MRI upload: only works after the survivor grants attachments.add; the
   // survivor and other attachments.read-authorized members can then view it. We set the
-  // exact grants we need right here so this does not depend on or disturb the 128-combo loop.
+  // exact grants we need right here so this does not depend on the permission loop.
   const clinicianUploadPath=`${circle}/${id(++sequence)}.png`, clinicianRecordID=id(++sequence), clinicianRecordPath=`${circle}/${clinicianRecordID}.png`;
   // (1) With the default clinician attachments grant (read=true, add=false) the clinician
   // cannot upload the storage object nor insert the attachments record.
@@ -250,7 +256,7 @@ try {
   check((await as('caregiver', sharedProfileSQL, [circle])).rows.length, 0, 'joining again starts with profile sharing off');
   const exposed=(await db.query("select tablename,rowsecurity from pg_tables where schemaname='public' order by tablename")).rows;
   check(exposed.every(table=>table.rowsecurity),true,'RLS enabled on every public table');
-  const report={engine:'PGlite 0.5.13 (PostgreSQL WASM)',assertions,permissionCombinations:combinations,status:'PASS',schemaSHA256:createHash('sha256').update(schema).digest('hex'),limitations:['Supabase Auth and Storage service tables are test doubles','No Xcode compile, Swift test execution, hosted service or iPhone run performed']};
+  const report={engine:'PGlite 0.5.13 (PostgreSQL WASM)',assertions,permissionCombinations:combinations,status:'PASS',schemaSHA256:createHash('sha256').update(sql.join('\n')).digest('hex'),limitations:['Supabase Auth and Storage service tables are test doubles','No Xcode compile, Swift test execution, hosted service or iPhone run performed']};
   await writeFile(new URL('../Validation/backend-results.json',import.meta.url),JSON.stringify(report,null,2)+'\n');
   console.log(`PASS: ${assertions} assertions; ${combinations} permission combinations, invitations, cross-circle isolation, storage gates, check-ins, symptom-break notification, device tokens, clinician upload with survivor-granted attachments add, and revocation`);
 } catch (error) {

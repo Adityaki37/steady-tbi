@@ -8,7 +8,7 @@ The download contains the iPhone app’s source code. You can run the fictional 
 
 1. Install and open a compatible version of **Xcode 16 or later**. Install an **iOS Simulator runtime** if Xcode prompts you. [Xcode downloads and Mac compatibility](https://developer.apple.com/xcode/system-requirements/) · [Installing simulator runtimes](https://developer.apple.com/documentation/xcode/downloading-and-installing-additional-xcode-components)
 2. Unzip the download and double-click **`Steady.xcodeproj`** in the extracted folder. [Download Steady ZIP](https://github.com/Adityaki37/steady-tbi/archive/refs/heads/main.zip)
-3. In the Xcode toolbar, select the **Steady** scheme and an **iPhone simulator** as the run destination. Press **⌘R**. In Steady, leave **Accounts and sharing** off, choose **Survivor**, and open **Today → Activity log** or tap **Log a symptom**. The role picker lets you explore the caregiver and clinician demo views.
+3. In the Xcode toolbar, select the **Steady** scheme and an **iPhone simulator** as the run destination. Press **⌘R**. Choose **Sign up** or **Sign in** to use your account. From the sign-in screen, open **Demo settings → Preview Survivor** to try **Activity log** or **Log a symptom** with sample data.
 
 If you prefer Terminal, run this from the extracted folder. The script builds, installs, and launches the demo in an available iPhone simulator.
 
@@ -16,7 +16,7 @@ If you prefer Terminal, run this from the extracted folder. The script builds, i
 sh scripts/run-on-mac.sh
 ```
 
-To try survivor onboarding and sharing across separate accounts, turn on **Accounts and sharing**. The download includes the connection to the hosted demo. [Account and sharing walkthrough](#create-an-account-and-share-a-circle)
+The download includes the hosted demo connection for account signup and sharing. [Account and sharing walkthrough](#create-an-account-and-share-a-circle)
 
 ### Run on your own iPhone
 
@@ -28,7 +28,7 @@ Apple’s free Personal Team supports own-device testing with temporary provisio
 
 ## What is implemented
 
-- **Local demo:** three switchable fictional roles; symptom intensity and context; caregiver observations; clinician notes; file import, metadata editing, deletion and native image/PDF preview; explicit reset; atomic disk persistence; a clearly synthetic, labeled brain MRI illustration.
+- **Local demo:** fictional role previews in Demo settings; symptom intensity and context; caregiver observations; clinician notes; file import, metadata editing, deletion and native image/PDF preview; explicit reset; atomic disk persistence; a clearly synthetic, labeled brain MRI illustration.
 - **Permissions:** the survivor retains all access. Other roles have separate read/add/edit/delete grants for each entry type. Edit/delete require read. Grants apply to all records of that type, not only records the contributor authored. Default caregiver access is observations only; clinician reads all types and contributes clinician notes. Local repository methods reject denied actions even if called directly.
 - **Separate accounts:** hosted demo usernames and passwords, Keychain sessions, one-use invitations bound to the recipient’s account, and survivor-managed access. Testers can try the hosted demo using the standard download. [Backend details](backend/README.md)
 - **Check-ins and the caregiver symptom-break prompt:** a caregiver can suggest a general check-in and, with a separate action, send a calm **"I noticed a possible symptom - suggest a break"** prompt. In account mode this is stored as a `symptom_break` check-in; the survivor sees it on foreground refresh (15-second polling). Local demo can schedule an optional **same-iPhone** notification mirroring the same gentle wording. This is a supportive prompt, not a diagnosis, and does not predict overload.
@@ -37,9 +37,9 @@ Apple’s free Personal Team supports own-device testing with temporary provisio
 
 ## Create an account and share a circle
 
-1. Turn on **Accounts and sharing**, choose **Sign up**, and select **Survivor**, **Caregiver**, or **Clinician**. Pick a fictional username and a new password of at least 10 characters. Use a distinct account for each role. Keep your demo password for later sign-in, since the demo has no email recovery. Use fictional data throughout.
-2. Once the caregiver or clinician has signed up, the survivor selects **Create my circle → Manage sharing**, enters the recipient’s demo username, and picks their role in the circle. Create an invitation code and share it with that person.
-3. The recipient signs in with their demo username and enters the code under **Join a survivor’s circle**. The circle opens with the role assigned by the invitation. To try all three accounts on one Mac, sign out before switching roles or use separate iPhone simulators.
+1. Choose **Sign up**, then select **Survivor**, **Clinician**, **Physician**, or **Caregiver**. Steady opens your account’s workspace after sign-in. Pick a fictional username and a new password of at least 10 characters. Use a distinct account for each role. Keep your demo password for later sign-in, since the demo has no email recovery. Use fictional data throughout.
+2. Once the person you want to invite has signed up, the survivor selects **Create my circle → Manage sharing**, enters the recipient’s demo username, and picks their role in the circle. Create an invitation code and share it with that person.
+3. The recipient signs in with their demo username and enters the code under **Join a survivor’s circle**. The circle opens with the role assigned by the invitation. To try multiple accounts on one Mac, sign out before switching accounts or use separate iPhone simulators.
 4. In **Manage sharing**, the survivor can change read, add, edit, and delete permissions by role and record type, revoke pending invitations, or remove a person’s access.
 
 Use **Account → Sign out** to switch accounts on the same device. Choose **Sign up** for a new account or **Sign in** to return to an existing one. Setup follows the signed-in account. Survivors with an unfinished profile see setup when they sign in, and returning survivors with a saved profile can continue where they left off.
@@ -50,9 +50,9 @@ In **Manage sharing → People with access**, the survivor can turn on **Share i
 
 ## Modes and data
 
-Survivors can open **Activity log** from **Today** or **Journal** in the local demo, or from **Account** when signed in. Each entry records the activity, start date and time, duration in minutes, cognitive fatigue at the end on a 0–5 scale, and optional symptoms in the survivor’s own words. Tap an entry to edit it or swipe to delete it. Entries are private in account mode and the fictional demo stores its own entries on the device.
+Survivors can open **Activity log** from **Today** or **Journal** in the local demo, or from **Your recovery** when signed in. Each entry records the activity, start date and time, duration in minutes, cognitive fatigue at the end on a 0–5 scale, and optional symptoms in the survivor’s own words. Tap an entry to edit it or swipe to delete it. Entries are private in account mode and the fictional demo stores its own entries on the device.
 
-The local role picker is an explicit demonstration, **not production authentication**. Anyone with access to that demo can switch to Survivor. Separate-account mode does not use this role picker: its role comes from ownership or an accepted server invitation.
+The **Demo settings** button on the sign-in screen opens fictional previews. Choose a role there and use the **Demo settings** tab to change previews or return to sign-in. In a signed-in workspace, circle access comes from ownership or an accepted invitation.
 
 Local state is stored in the app’s Application Support directory (`SteadyDemo/demo-v1.json`), with imported files in `Attachments/`. Writes are atomic and use iOS file protection. The directory is excluded from app backups. Reset restores fictional seeds/default permissions, removes imported local files and clears the check-in notification. A corrupt file shows recovery UI instead of silently resetting. Local data is never automatically uploaded to account mode.
 
@@ -71,7 +71,7 @@ Two GitHub Actions workflows configure these checks. See [validation results](Va
 | Swift package tests, unsigned simulator build, app-hosted `SteadyAppTests` | Yes, on an iOS **simulator** | Physical iPhone, free Personal Team signing |
 | `SteadyUITests` (XCUITest) | Drives the **local demo mode** on a simulator: symptom logging, Journal, Files preview, permission toggles, caregiver and clinician flows, check-in, reset, large Dynamic Type. Screenshots are exported from the xcresult | VoiceOver, device layouts, account mode |
 | Accessibility audit (`testAccessibilityAudit`) | Runs XCUITest `performAccessibilityAudit()` (iOS 17+) on Today (survivor and caregiver), Journal, Files, the file preview sheet, Control and the editor sheet in one run (issues are collected, then reported once), as a separate CI step so other UI tests are unaffected. It is configured to run in CI on macos-15 (not yet verified; the step is non-gating until a first baseline is triaged) and prints every issue as `A11Y_ISSUE` lines (screen, type, description, element) plus `A11Y_AUDIT_SCREEN` per screen and `A11Y_TEST_EXIT=<code>` if the markers reach the log. No audit type is excluded. It does not replace VoiceOver testing | Real VoiceOver use, contrast judgement beyond the automated checks, device layouts |
-| Supabase backend | An **ephemeral local Supabase stack** started with Docker in CI (`live-supabase.yml`) exercises Auth, PostgREST, and Storage. The hosted demo has a separate smoke test for all three roles, invitations, profile sharing and revocation, and activity log privacy. | Physical devices against the hosted demo |
+| Supabase backend | An **ephemeral local Supabase stack** started with Docker in CI (`live-supabase.yml`) exercises Auth, PostgREST, and Storage. The hosted demo has a separate smoke test for all account roles, invitations, profile sharing and revocation, and activity log privacy. | Physical devices against the hosted demo |
 | Remote push (APNs) | Nothing. Only the `device_tokens` table and the `symptom_break` check-in without the Edge Function are covered by the e2e script | Edge Function, APNs delivery and token registration. These need a **paid Apple Developer Program account**, an APNs key and a real provisioning profile |
 
 Windows host verified: **DESKTOP-5MIQVIT, Windows 10.0.26300**. Node 24.13.0, Python 3.14 and Git were available; no Swift or Xcode executable was found. No `.agents/skills`, existing project instructions, or prior test/run instructions were present in the initially empty workspace. Xcode cannot run on this OS, so no Xcode installation was attempted here.
@@ -85,7 +85,7 @@ node test-tools/backend.test.mjs
 node test-tools/project.test.cjs
 ```
 
-Backend tests execute PostgreSQL RLS and functions using pinned PGlite, with minimal Auth/Storage test tables. They cover all **128 permission combinations** (2 roles × 4 types × 16 CRUD combinations), invitation replay/email/expiry/revocation, cross-circle isolation, author spoofing, storage gates, check-ins and member revocation. This is stronger than a JavaScript policy mock, but **does not exercise Supabase’s HTTP, Auth or Storage services**. Reports are in [Validation](Validation/).
+Backend tests execute PostgreSQL RLS and functions using pinned PGlite, with minimal Auth/Storage test tables. They cover all **192 permission combinations** (3 member roles × 4 types × 16 CRUD combinations), invitation replay/email/expiry/revocation, cross-circle isolation, author spoofing, storage gates, check-ins and member revocation. This is stronger than a JavaScript policy mock, but **does not exercise Supabase’s HTTP, Auth or Storage services**. Reports are in [Validation](Validation/).
 
 An additional optional Swift grammar parse was run on Windows with pinned tree-sitter packages. It found no syntax errors in the nine Swift files. This is **not type checking or compilation**. To repeat: `python3 -m pip install --target .validation-python -r validation-requirements.txt`, then `python3 scripts/swift_parse.py`. Regenerating project assets with `scripts/generate_project.py` additionally needs Pillow; normal building does not.
 
