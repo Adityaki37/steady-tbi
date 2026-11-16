@@ -1,4 +1,4 @@
-# STEADY
+# Steady-Meena
 
 A native SwiftUI **fictional-data prototype** for noticing and recording TBI-related experiences, with survivor, caregiver and clinician contributions. Sensor-based overload prediction is future work; this app does not predict overload or interpret scans.
 
