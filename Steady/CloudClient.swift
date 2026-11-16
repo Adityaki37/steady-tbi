@@ -528,20 +528,22 @@ private enum SessionKeychain {
         _ = try await request("rest/v1/check_ins", method: "POST", body: ["circle_id": id.uuidString, "sender_id": session.user.id.uuidString, "category": "symptom_break", "body": "A caregiver noticed a possible symptom and suggests taking a break."])
         try await refresh(); message = "Saved on the server. Live cross-device push requires a paid Apple Developer account and configured APNs; until then the survivor sees this on the next foreground refresh (the app refreshes every 15 seconds while open). This is a supportive prompt, not a diagnosis."
     }
-    func upload(_ source: URL) async throws {
+    func upload(_ source: URL, displayName: String? = nil) async throws {
         guard let id = circleID, let session, can(.attachments, .add) else { throw DemoError.denied }
         let accessing = source.startAccessingSecurityScopedResource(); defer { if accessing { source.stopAccessingSecurityScopedResource() } }
         let ext = source.pathExtension.lowercased()
-        guard ["png", "jpg", "jpeg", "pdf"].contains(ext) else { throw DemoError.invalid("Use a fictional PNG, JPEG or PDF.") }
+        guard ["png", "jpg", "jpeg", "pdf"].contains(ext) else { throw DemoError.invalid("Choose a PNG, JPEG or PDF.") }
         let size = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max
         guard size <= 15 * 1024 * 1024 else { throw DemoError.invalid("Choose a file below 15 MB.") }
         let data = try Data(contentsOf: source)
         let mime = ext == "pdf" ? "application/pdf" : ext == "png" ? "image/png" : "image/jpeg"
         let path = id.uuidString.lowercased() + "/" + UUID().uuidString.lowercased() + "." + ext
         _ = try await request("storage/v1/object/steady-fictional/" + path, method: "POST", bytes: data, mime: mime)
+        let filename = displayName ?? source.lastPathComponent
+        let title = String((filename as NSString).deletingPathExtension.prefix(100))
         do {
             _ = try await request("rest/v1/records", method: "POST", body: ["circle_id": id.uuidString, "kind": "attachments", "author_id": session.user.id.uuidString,
-                "title": String(source.deletingPathExtension().lastPathComponent.prefix(100)), "body": "Imported fictional attachment. No diagnostic interpretation.", "file_path": path, "file_name": source.lastPathComponent])
+                "title": title, "body": "", "file_path": path, "file_name": filename])
         } catch {
             // Add-only users may not delete an orphan; report it rather than claiming cleanup.
             throw DemoError.invalid("The file uploaded but its entry could not be saved. The survivor must remove orphan path \(path) using Storage administration. \(error.localizedDescription)")

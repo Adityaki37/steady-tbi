@@ -69,8 +69,6 @@ struct AccountView: View {
                         Button("Demo settings", action: openDemo)
                             .disabled(busy)
                             .accessibilityIdentifier("openDemoSettings")
-                    } footer: {
-                        Text("Use fictional information in Steady.")
                     }
                 }
             }.navigationTitle(accountRole.map { "\($0.title) workspace" } ?? "Steady").navigationBarTitleDisplayMode(.inline)
@@ -93,7 +91,7 @@ struct AccountView: View {
                 .sheet(isPresented: $editor) { CloudEditor(client: client, kind: kind, existing: nil) }
                 .sheet(item: $editing) { CloudEditor(client: client, kind: RecordKind(rawValue: $0.kind) ?? .notes, existing: $0) }
                 .sheet(item: $preview) { item in
-                    FilePreviewView(url: item.url, title: "Fictional file") { preview = nil }
+                    FilePreviewView(url: item.url, title: "File preview") { preview = nil }
                 }
                 .sheet(isPresented: $joiningAnotherCircle) {
                     NavigationStack {
@@ -196,7 +194,7 @@ struct AccountView: View {
                 .keyboardType(hostedDemo ? .asciiCapable : .emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(busy)
             SecureField(hostedDemo ? "Demo password" : "Password", text: $password).textContentType(creating ? .newPassword : .password).disabled(busy)
             if hostedDemo && creating {
-                Text("Choose a fictional username and a new password of at least 10 characters. Keep your password for later sign-in. Demo accounts have no email recovery.")
+                Text("Choose a demo username and a password of at least 10 characters. Keep your password for later sign-in. Demo accounts have no email recovery.")
                     .font(.footnote).foregroundStyle(Palette.secondaryText)
             }
             Button(busy ? "Working…" : creating ? "Create account" : "Sign in") {
@@ -321,21 +319,20 @@ struct AccountView: View {
             if client.can(kind, .add) {
                 Button(journalAddTitle) { if kind == .attachments { importing = true } else { editor = true } }.disabled(busy)
                 if kind == .attachments {
-                    Button("Upload bundled fictional MRI illustration") {
+                    Button("Upload sample MRI illustration") {
                         guard let url = Bundle.main.url(forResource: "Fictional-brain-MRI", withExtension: "png", subdirectory: "SteadyResources") else { return }
-                        Task { await perform { try await client.upload(url) } }
+                        Task { await perform { try await client.upload(url, displayName: "Sample-brain-MRI.png") } }
                     }.disabled(busy)
-                    Text("Clearly labeled fictional illustration, not a real patient scan. Steady does not diagnose or interpret imaging. The survivor controls who may add files; any member the survivor authorizes (including a clinician) can upload one here.").font(.caption).foregroundStyle(Palette.secondaryText)
                 }
             } else if kind == .attachments, accountRole == .clinician || accountRole == .physician {
-                Text("Ask the survivor to grant Files → Add to upload a fictional file.").font(.caption).foregroundStyle(Palette.secondaryText)
+                Text("Ask the survivor to grant Files → Add to upload a file.").font(.caption).foregroundStyle(Palette.secondaryText)
             }
             if !client.can(kind, .read) {
                 Label("History is private", systemImage: "lock.shield")
                 Text(client.can(kind, .add) ? "You can add an entry without reading this history." : "The survivor has not granted access to this history.")
             } else {
                 let entries = client.records.filter { $0.kind == kind.rawValue }
-                if entries.isEmpty { Text("No shared entries yet. Add a fictional example.").foregroundStyle(Palette.secondaryText) }
+                if entries.isEmpty { Text("No shared entries yet.").foregroundStyle(Palette.secondaryText) }
                 ForEach(entries) { record in
                     VStack(alignment: .leading, spacing: 10) {
                         Text(record.title).font(.headline)
@@ -343,7 +340,7 @@ struct AccountView: View {
                         Text(record.body)
                         Text(record.created_at).font(.caption).foregroundStyle(Palette.secondaryText)
                         if record.file_path != nil {
-                            Button("Preview fictional file") { Task { await perform { preview = FilePreview(url: try await client.preview(record)) } } }.disabled(busy)
+                            Button("Preview file") { Task { await perform { preview = FilePreview(url: try await client.preview(record)) } } }.disabled(busy)
                         }
                         HStack {
                             if client.can(kind, .edit) { Button("Edit") { editing = record } }
@@ -357,10 +354,10 @@ struct AccountView: View {
     }
     private var journalAddTitle: String {
         switch kind {
-        case .attachments: return "Import a fictional file"
+        case .attachments: return "Import a file"
         case .notes where accountRole == .physician: return "Add a physician note"
         case .notes where accountRole == .clinician: return "Add a clinician note"
-        default: return "Add fictional entry"
+        default: return "Add entry"
         }
     }
     private var accessSection: some View {
@@ -490,7 +487,6 @@ struct CloudEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Text("Fictional records only. This entry syncs with the configured test circle.").font(.footnote)
                 TextField("Short title", text: $title)
                 TextField("What did you notice?", text: $note, axis: .vertical).lineLimit(4...10)
                 if kind == .symptoms { Stepper("Intensity \(severity) of 5", value: $severity, in: 1...5) }

@@ -60,13 +60,13 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
     }
     func importFile(_ source: URL) throws {
         guard try repo().can(role, .attachments, .add) else { throw DemoError.denied }
-        guard source.isFileURL else { throw DemoError.invalid("Choose a local fictional PDF, PNG or JPEG.") }
+        guard source.isFileURL else { throw DemoError.invalid("Choose a local PDF, PNG or JPEG.") }
         let accessing = source.startAccessingSecurityScopedResource()
         defer { if accessing { source.stopAccessingSecurityScopedResource() } }
         let ext = source.pathExtension.lowercased()
         guard ["pdf", "png", "jpg", "jpeg"].contains(ext) else { throw DemoError.invalid("Choose a PDF, PNG or JPEG.") }
         let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
-        guard let bytes = attributes[.size] as? NSNumber, bytes.int64Value <= 15 * 1024 * 1024 else { throw DemoError.invalid("Choose a fictional file smaller than 15 MB.") }
+        guard let bytes = attributes[.size] as? NSNumber, bytes.int64Value <= 15 * 1024 * 1024 else { throw DemoError.invalid("Choose a file up to 15 MB.") }
         let handle = try FileHandle(forReadingFrom: source); defer { try? handle.close() }
         let prefix = [UInt8](try handle.read(upToCount: 8) ?? Data())
         let signatureOK: Bool
@@ -83,7 +83,7 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
             try FileManager.default.copyItem(at: source, to: destination)
             try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUnlessOpen], ofItemAtPath: destination.path)
             try repo().add(role, .attachments, title: String(source.deletingPathExtension().lastPathComponent.prefix(100)),
-                           body: "Imported fictional file. For preview only; no diagnostic interpretation.",
+                           body: "",
                            attachment: DemoAttachment(filename: basename, displayName: source.lastPathComponent, isBundledSample: false))
             revision += 1
         } catch { try? FileManager.default.removeItem(at: destination); throw error }
@@ -96,7 +96,7 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
         if file.isBundledSample {
             guard let sample = Bundle.main.url(forResource: "Fictional-brain-MRI", withExtension: "png", subdirectory: "SteadyResources") else { throw DemoError.missing }; url = sample
         } else { url = filesDirectory.appendingPathComponent(file.filename) }
-        guard FileManager.default.fileExists(atPath: url.path) else { throw DemoError.invalid("The local file is missing. Reimport a fictional copy.") }
+        guard FileManager.default.fileExists(atPath: url.path) else { throw DemoError.invalid("The local file is missing. Import it again.") }
         return url
     }
     func checkIn() -> String? { try? repo().checkIn(role) }
@@ -135,7 +135,7 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
         center.removeDeliveredNotifications(withIdentifiers: ["steady-demo-check-in"])
         if FileManager.default.fileExists(atPath: filesDirectory.path) {
             do { try FileManager.default.removeItem(at: filesDirectory) }
-            catch { show("Demo reset", "Fictional entries and permissions were restored. Some imported local files could not be removed; retry reset to clean them up.") }
+            catch { show("Demo reset", "Sample entries and permissions were restored. Reset again to remove the remaining files.") }
         }
     }
     func show(_ title: String, _ message: String) { notice = AppNotice(title: title, message: message) }

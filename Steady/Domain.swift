@@ -156,12 +156,12 @@ private struct DemoState: Codable {
                        createdAt: day, updatedAt: day, attachment: file)
         }
         return DemoState(permissions: permissions, records: [
-            record(.symptoms, .survivor, "Noise felt tiring", "Fictional example: a busy cafe felt overwhelming. A quiet room felt more comfortable afterward.", severity: 3),
-            record(.symptoms, .survivor, "Screen fatigue", "Fictional example: I noticed tired eyes while reading. I logged it to talk about at my next visit.", severity: 2),
-            record(.observations, .caregiver, "A quieter afternoon", "Fictional observation: Alex asked to lower the music and chose to rest."),
-            record(.notes, .clinician, "Topics for the next visit", "Fictional note: ask which daily environments feel difficult and review the symptom log together. No diagnosis or treatment advice is provided."),
-            record(.attachments, .survivor, "Fictional brain MRI illustration", "Synthetic illustration for testing file preview. Not a patient scan, not diagnostic, and not interpreted by this app.",
-                   file: DemoAttachment(filename: "Fictional-brain-MRI.png", displayName: "Fictional-brain-MRI.png", isBundledSample: true))
+            record(.symptoms, .survivor, "Noise felt tiring", "A busy cafe felt overwhelming. A quiet room felt more comfortable afterward.", severity: 3),
+            record(.symptoms, .survivor, "Screen fatigue", "I noticed tired eyes while reading. I logged it to talk about at my next visit.", severity: 2),
+            record(.observations, .caregiver, "A quieter afternoon", "Alex asked to lower the music and chose to rest."),
+            record(.notes, .clinician, "Topics for the next visit", "Ask which daily environments feel difficult and review the symptom log together."),
+            record(.attachments, .survivor, "Sample brain MRI illustration", "Synthetic illustration for preview.",
+                   file: DemoAttachment(filename: "Fictional-brain-MRI.png", displayName: "Sample-brain-MRI.png", isBundledSample: true))
         ])
     }
 

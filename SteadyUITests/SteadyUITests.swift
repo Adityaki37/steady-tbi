@@ -181,21 +181,21 @@ final class SteadyUITests: XCTestCase {
     func testFilesTabPreviewOfFictionalMRI() {
         launch()
         openTab("Files")
-        XCTAssertTrue(app.staticTexts["Fictional attachments only"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Preview the sample MRI illustration or import a PDF, PNG or JPEG up to 15 MB."].waitForExistence(timeout: 10))
         let preview = app.buttons["previewFile"]
         XCTAssertTrue(preview.waitForExistence(timeout: 10), "Sample MRI row missing")
         shot("03-files-list")
         preview.tap()
-        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForExistence(timeout: 15), "Preview sheet did not appear")
+        XCTAssertTrue(app.navigationBars["File preview"].waitForExistence(timeout: 15), "Preview sheet did not appear")
         let image = app.images["filePreviewImage"]
         XCTAssertTrue(image.waitForExistence(timeout: 10), "Preview image did not render")
         XCTAssertFalse(image.frame.isEmpty, "Preview image has an empty frame")
         XCTAssertGreaterThan(image.frame.width, 0)
         XCTAssertGreaterThan(image.frame.height, 0)
         shot("04-quicklook-fictional-mri")
-        app.navigationBars["Fictional file preview"].buttons["Done"].tap()
-        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForNonExistence(timeout: 10), "Preview sheet did not close")
-        XCTAssertTrue(app.staticTexts["Fictional attachments only"].waitForExistence(timeout: 10))
+        app.navigationBars["File preview"].buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["File preview"].waitForNonExistence(timeout: 10), "Preview sheet did not close")
+        XCTAssertTrue(app.staticTexts["Preview the sample MRI illustration or import a PDF, PNG or JPEG up to 15 MB."].waitForExistence(timeout: 10))
     }
 
     func testControlTabTogglesCaregiverPermission() {
@@ -356,11 +356,11 @@ final class SteadyUITests: XCTestCase {
         XCTAssertTrue(preview.waitForExistence(timeout: 10), "Sample MRI row missing")
         try auditCurrentScreen("files")
         preview.tap()
-        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForExistence(timeout: 15), "Preview sheet did not appear")
+        XCTAssertTrue(app.navigationBars["File preview"].waitForExistence(timeout: 15), "Preview sheet did not appear")
         XCTAssertTrue(app.images["filePreviewImage"].waitForExistence(timeout: 10), "Preview image did not render")
         try auditCurrentScreen("file-preview")
-        app.navigationBars["Fictional file preview"].buttons["Done"].tap()
-        XCTAssertTrue(app.navigationBars["Fictional file preview"].waitForNonExistence(timeout: 10), "Preview sheet did not close")
+        app.navigationBars["File preview"].buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["File preview"].waitForNonExistence(timeout: 10), "Preview sheet did not close")
 
         openTab("Control")
         XCTAssertTrue(app.staticTexts["The survivor stays in control"].waitForExistence(timeout: 10))

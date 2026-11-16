@@ -20,7 +20,7 @@ def font(size, bold=False):
 
 resources = APP / 'SteadyResources'; resources.mkdir(parents=True, exist_ok=True)
 image = Image.new('RGB', (1200, 1400), '#10151c'); d = ImageDraw.Draw(image)
-d.text((70, 55), 'FICTIONAL BRAIN MRI', font=font(62, True), fill='#e5eff0')
+d.text((70, 55), 'SAMPLE BRAIN MRI', font=font(62, True), fill='#e5eff0')
 d.text((70, 138), 'SYNTHETIC ILLUSTRATION / DEMO ONLY', font=font(31, True), fill='#92c4b8')
 # Abstract symmetrical shapes, deliberately not a patient scan or medical model.
 d.ellipse((190, 270, 1010, 1110), fill='#c8ced0', outline='#f0f2f3', width=10)
@@ -38,7 +38,7 @@ d.rounded_rectangle((170, 640, 1030, 770), radius=20, fill='#183e39')
 d.text((260, 670), 'NOT A PATIENT SCAN', font=font(49, True), fill='#ffffff')
 d.text((70, 1170), 'No diagnostic use. No scan interpretation.', font=font(38, True), fill='#ffffff')
 d.text((70, 1230), 'Made for Steady attachment preview testing.', font=font(31), fill='#c4d1d5')
-d.text((70, 1290), 'This is code-drawn fictional artwork.', font=font(28), fill='#92c4b8')
+d.text((70, 1290), 'This is a code-drawn illustration.', font=font(28), fill='#92c4b8')
 image.save(resources / 'Fictional-brain-MRI.png')
 
 assets = APP / 'Assets.xcassets'; assets.mkdir(exist_ok=True)

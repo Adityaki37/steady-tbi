@@ -94,7 +94,10 @@ struct SurvivorProfileView: View {
     }
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.timeZone) private var timeZone
     @State private var draft: SurvivorProfile
+    @State private var showingInjuryDate = false
+    @State private var pendingInjuryDate = Date.now
     @State private var step = Step.details
     @State private var expandedCategory: SymptomCategory?
     @State private var customSymptom = ""
@@ -113,10 +116,12 @@ struct SurvivorProfileView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Text(step.title).font(.title2.bold()).accessibilityAddTraits(.isHeader)
-                } header: {
-                    Text("Step \(step.rawValue + 1) of \(Step.allCases.count)")
+                if step != .details {
+                    Section {
+                        Text(step.title).font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                    } header: {
+                        stepProgress
+                    }
                 }
                 switch step {
                 case .details: details
@@ -137,7 +142,7 @@ struct SurvivorProfileView: View {
             .id(step)
             .privacySensitive()
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Survivor profile")
+            .navigationTitle(step == .details ? step.title : "Survivor profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -160,25 +165,20 @@ struct SurvivorProfileView: View {
         draft.injury_description.unicodeScalars.count <= 300 && draft.injury_notes.unicodeScalars.count <= 1000
     }
 
+    private var stepProgress: some View {
+        Text("Step \(step.rawValue + 1) of \(Step.allCases.count)")
+    }
+
     private var details: some View {
         Group {
             Section {
                 TextField("Your name", text: $draft.display_name).textContentType(.name)
                 if name.unicodeScalars.count > 100 { Text("Use up to 100 characters.").foregroundStyle(.red) }
-            } footer: {
-                Text("Use fictional details for this prototype. You choose who can see your injury details and ranked symptoms in Manage sharing.")
+            } header: {
+                stepProgress
             }
             Section("Your injury") {
-                Toggle("I know the injury date", isOn: Binding(
-                    get: { draft.injury_date != nil },
-                    set: { draft.injury_date = $0 ? SurvivorProfile.dateFormat.string(from: Date()) : nil }
-                ))
-                if draft.injury_date != nil {
-                    DatePicker("Injury date", selection: Binding(
-                        get: { draft.injury_date.flatMap { SurvivorProfile.dateFormat.date(from: $0) } ?? Date() },
-                        set: { draft.injury_date = SurvivorProfile.dateFormat.string(from: $0) }
-                    ), in: ...Date(), displayedComponents: .date)
-                }
+                injuryDateRow
                 TextField("Injury type or diagnosis (optional)", text: $draft.injury_description, axis: .vertical)
                     .lineLimit(1...3)
                 if draft.injury_description.unicodeScalars.count > 300 { Text("Use up to 300 characters.").foregroundStyle(.red) }
@@ -186,6 +186,56 @@ struct SurvivorProfileView: View {
                     .lineLimit(2...5)
                 if draft.injury_notes.unicodeScalars.count > 1000 { Text("Use up to 1,000 characters.").foregroundStyle(.red) }
             }
+        }
+    }
+
+    private var injuryDateRow: some View {
+        let format = SurvivorProfile.dateFormat
+        format.timeZone = timeZone
+        let selectedDate = draft.injury_date.flatMap { format.date(from: $0) }
+        let displayFormat = Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: timeZone)
+        let dateLabel = selectedDate?.formatted(displayFormat) ?? "Select date"
+
+        return Button {
+            pendingInjuryDate = selectedDate ?? .now
+            showingInjuryDate = true
+        } label: {
+            HStack {
+                Text("Injury date")
+                Spacer()
+                Text(dateLabel)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(.quaternary, in: Capsule())
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Injury date")
+        .accessibilityValue(dateLabel)
+        .popover(isPresented: $showingInjuryDate) {
+            VStack {
+                DatePicker("Injury date", selection: $pendingInjuryDate, in: ...Date.now, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                HStack {
+                    if selectedDate != nil {
+                        Button("Clear date") {
+                            draft.injury_date = nil
+                            showingInjuryDate = false
+                        }
+                    }
+                    Spacer()
+                    Button("Use date") {
+                        draft.injury_date = format.string(from: pendingInjuryDate)
+                        showingInjuryDate = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding()
+            .frame(idealWidth: 320)
+            .presentationCompactAdaptation(.popover)
         }
     }
 

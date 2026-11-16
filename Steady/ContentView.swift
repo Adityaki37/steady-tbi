@@ -62,7 +62,7 @@ struct ContentView: View {
     private var demoSettings: some View {
         NavigationStack {
             Form {
-                Section("Choose a fictional view") {
+                Section("Choose a view to preview") {
                     ForEach(DemoRole.allCases) { role in
                         Button("Preview \(role.title)") {
                             store.role = role
@@ -125,7 +125,7 @@ struct HomeView: View {
                     } else { Label("Adding is off for this role", systemImage: "lock").foregroundStyle(Palette.secondaryText) }
                     if store.role == .survivor {
                         NavigationLink("Activity log") {
-                            ActivityLogView(privacyNote: "Use fictional entries in this on-device demo.",
+                            ActivityLogView(privacyNote: "Demo activities are stored on this device.",
                                             load: store.activityEntries, save: store.saveActivity, remove: store.deleteActivity)
                         }
                     }
@@ -159,8 +159,6 @@ struct HomeView: View {
                     Label("You decide what is shared", systemImage: "hand.raised").font(.headline)
                     Text("The survivor controls history access and contributions separately. A caregiver can add observations without seeing symptom history.")
                 }
-                Text("All sample entries are fictional. Steady helps record experiences; it does not predict overload, interpret scans, or provide diagnosis or treatment.")
-                    .font(.footnote).foregroundStyle(Palette.secondaryText)
             }.padding(20)
         }.background(Palette.background).navigationTitle("Today").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $editor) { EditorView(kind: store.role.contribution, existing: nil) }
@@ -169,7 +167,7 @@ struct HomeView: View {
         switch store.role {
         case .survivor: return "A quick note is enough. You can rate an experience from 1 (mild) to 5 (intense) and describe what was happening."
         case .caregiver: return "Describe what you noticed in your own words."
-        case .clinician: return "Review the fictional information shared with you and leave a note. This demo is not a clinical record system."
+        case .clinician: return "Review shared information and leave a note."
         case .physician: return "Review shared symptoms and files before adding a note for the survivor."
         }
     }
@@ -194,7 +192,7 @@ struct JournalView: View {
             Section {
                 if store.role == .survivor {
                     NavigationLink("Activity log") {
-                        ActivityLogView(privacyNote: "Use fictional entries in this on-device demo.",
+                        ActivityLogView(privacyNote: "Demo activities are stored on this device.",
                                         load: store.activityEntries, save: store.saveActivity, remove: store.deleteActivity)
                     }
                 }
@@ -211,7 +209,7 @@ struct JournalView: View {
             } else if entries.isEmpty {
                 Section { Text("No entries here yet. A short note is a useful start.").foregroundStyle(Palette.secondaryText) }
             } else {
-                Section(secondary: "Fictional demo entries") {
+                Section(secondary: "Demo entries") {
                     ForEach(entries) { record in
                         NavigationLink { RecordDetailView(recordID: record.id, kind: kind) } label: { RecordRow(record: record) }
                     }
@@ -296,7 +294,7 @@ struct EditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(secondary: "Fictional \(kind.title.lowercased()) entry") {
+                Section(secondary: kind.title) {
                     TextField("Short title", text: $title).accessibilityLabel("Entry title").accessibilityIdentifier("entryTitle")
                     TextField("What did you notice?", text: $bodyText, axis: .vertical).lineLimit(4...10).accessibilityIdentifier("entryBody")
                     Text("\(title.count)/100 title · \(bodyText.count)/3,000 note").font(.caption).foregroundStyle(Palette.secondaryText)
@@ -307,7 +305,7 @@ struct EditorView: View {
                         Text("1 = mild · 5 = intense. This is a personal description, not a medical score.").font(.footnote).foregroundStyle(Palette.secondaryText)
                     }
                 }
-                Section { Text("Use made-up examples only. Entries stay in this app on this device.").font(.footnote).foregroundStyle(Palette.secondaryText) }
+                Section { Text("Demo entries stay on this device.").font(.footnote).foregroundStyle(Palette.secondaryText) }
                 if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red).accessibilityAddTraits(.isStaticText) } }
             }.navigationTitle(existing == nil ? "Add entry" : "Edit entry").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -334,14 +332,13 @@ struct FilesView: View {
     var body: some View {
         List {
             Section {
-                Text("Fictional attachments only").font(.headline)
-                Text("Preview a sample brain MRI illustration or import a made-up PDF, PNG or JPEG (up to 15 MB). No scan analysis or diagnostic interpretation.").font(.subheadline)
-                if store.can(.attachments, .add) { Button { importing = true } label: { Label("Import a fictional file", systemImage: "plus.circle").fixedSize(horizontal: false, vertical: true) }.accessibilityIdentifier("importFile") }
+                Text("Preview the sample MRI illustration or import a PDF, PNG or JPEG up to 15 MB.").font(.subheadline)
+                if store.can(.attachments, .add) { Button { importing = true } label: { Label("Import a file", systemImage: "plus.circle").fixedSize(horizontal: false, vertical: true) }.accessibilityIdentifier("importFile") }
             }
             if !store.can(.attachments, .read) {
                 Section { Label("Files are private to this role", systemImage: "lock"); Text("Importing, if enabled, does not grant access to existing files.") }
             } else if files.isEmpty {
-                Section { Text("No files yet. Import a fictional example to try preview.") }
+                Section { Text("No files yet.") }
             } else {
                 Section(secondary: "On this device") {
                     ForEach(files) { file in
@@ -360,10 +357,10 @@ struct FilesView: View {
             }
         }.navigationTitle("Files")
             .fileImporter(isPresented: $importing, allowedContentTypes: [.pdf, .png, .jpeg], allowsMultipleSelection: false) { result in
-                do { if let url = try result.get().first { try store.importFile(url); store.show("File added", "The fictional file was copied into this app on this device.") } }
+                do { if let url = try result.get().first { try store.importFile(url); store.show("File added", "The file is saved on this device.") } }
                 catch { store.report(error) }
             }
-            .sheet(item: $preview) { item in FilePreviewView(url: item.url, title: "Fictional file preview") { preview = nil } }
+            .sheet(item: $preview) { item in FilePreviewView(url: item.url, title: "File preview") { preview = nil } }
             .sheet(item: $editing) { EditorView(kind: .attachments, existing: $0) }
             .confirmationDialog("Delete file and its entry?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
                 Button("Delete file", role: .destructive) {
@@ -392,11 +389,7 @@ struct FilePreviewView: View {
         if url.pathExtension.lowercased() == "pdf" {
             PDFPreview(url: url).accessibilityIdentifier("filePreviewPDF")
         } else if let image = UIImage(contentsOfFile: url.path) {
-            VStack(spacing: 12) {
-                ZoomableImage(image: image)
-                Text("Fictional illustration. Not a patient scan and not interpreted by Steady.")
-                    .font(.footnote).foregroundStyle(Palette.secondaryText).multilineTextAlignment(.center).padding(.horizontal)
-            }.padding(.bottom)
+            ZoomableImage(image: image)
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle").font(.largeTitle).accessibilityHidden(true)
@@ -420,7 +413,7 @@ private struct ZoomableImage: View {
             .onTapGesture(count: 2) { scale = 1; committed = 1 }
             .clipped()
             .accessibilityElement()
-            .accessibilityLabel("Fictional brain MRI illustration. Not a patient scan.")
+            .accessibilityLabel("Image preview")
             .accessibilityAddTraits(.isImage)
             .accessibilityIdentifier("filePreviewImage")
     }
@@ -458,7 +451,7 @@ struct SharingView: View {
                     }
                 }
                 Section(secondary: "Start again") {
-                    Button("Reset fictional demo", role: .destructive) { reset = true }.accessibilityIdentifier("resetDemo")
+                    Button("Reset demo", role: .destructive) { reset = true }.accessibilityIdentifier("resetDemo")
                     Text("Restores example entries and default permissions, removes imported files, and clears the local check-in and notification.").font(.footnote).foregroundStyle(Palette.secondaryText)
                 }
             } else {
@@ -490,8 +483,8 @@ struct RecoveryView: View {
                 Label("Saved demo needs attention", systemImage: "externaldrive.badge.exclamationmark").font(.title2.bold())
                     .minimumScaleFactor(0.6).fixedSize(horizontal: false, vertical: true)
                 Text(message)
-                Text("Your saved file has not been silently replaced. Resetting discards it and restores fictional examples.")
-                if store.role == .survivor { Button("Reset fictional demo", role: .destructive) { confirm = true }.buttonStyle(.bordered) }
+                Text("Resetting discards your saved file and restores the demo examples.")
+                if store.role == .survivor { Button("Reset demo", role: .destructive) { confirm = true }.buttonStyle(.bordered) }
                 else { Text("Switch to Survivor to reset.") }
             }.padding(24)
         }.confirmationDialog("Discard saved demo and reset?", isPresented: $confirm, titleVisibility: .visible) {
