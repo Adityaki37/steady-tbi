@@ -2,6 +2,10 @@
 
 A native SwiftUI **fictional-data prototype** for noticing and recording TBI-related experiences, with survivor, caregiver and clinician contributions. Sensor-based overload prediction is future work; this app does not predict overload or interpret scans.
 
+## Contributors
+
+- Samara Buchanan
+
 ## Try Steady on your Mac
 
 The download contains the iPhone app’s source code. You can run the fictional demo in the iPhone Simulator with Xcode. The demo works offline after setup and runs without a Steady account or Supabase project.
