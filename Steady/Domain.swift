@@ -95,6 +95,55 @@ public struct ActivityEntry: Codable, Identifiable, Equatable {
     }
 }
 
+/// One answer to "How are you feeling?": 1 = extremely overwhelmed, 5 = perfectly fine, in steps of 0.5.
+public struct FeelingCheck: Codable, Identifiable, Equatable {
+    public let id: UUID
+    public let rating: Double
+    public let recordedAt: Date
+    public init(id: UUID = UUID(), rating: Double, recordedAt: Date) {
+        self.id = id; self.rating = rating; self.recordedAt = recordedAt
+    }
+    public static let lowest = 1.0
+    public static let highest = 5.0
+    public static let step = 0.5
+    public static let allowedRatings: [Double] = Array(stride(from: lowest, through: highest, by: step))
+    public static let lowestLabel = "Extremely overwhelmed"
+    public static let highestLabel = "Perfectly fine"
+    public static func format(_ rating: Double) -> String {
+        rating.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(rating)) : String(format: "%.1f", rating)
+    }
+    public func validate() throws {
+        guard Self.allowedRatings.contains(rating) else {
+            throw DemoError.invalid("Choose a rating from 1 to 5 in steps of 0.5.")
+        }
+    }
+}
+
+/// Picks random reminder times: `perDay` per day inside a waking window, one in each equal slot,
+/// so two reminders are never closer than `2 * edgeMinutes` apart. Times at or before `now` are dropped.
+public enum FeelingSchedule {
+    public static func times<R: RandomNumberGenerator>(
+        days: Int, from now: Date, calendar: Calendar = .current,
+        startHour: Int = 9, endHour: Int = 21, perDay: Int = 3, edgeMinutes: Int = 30,
+        using generator: inout R
+    ) -> [Date] {
+        guard days > 0, perDay > 0, endHour > startHour else { return [] }
+        let slotMinutes = (endHour - startHour) * 60 / perDay
+        guard slotMinutes > edgeMinutes * 2 else { return [] }
+        let today = calendar.startOfDay(for: now)
+        var result: [Date] = []
+        for offset in 0..<days {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: today),
+                  let windowStart = calendar.date(bySettingHour: startHour, minute: 0, second: 0, of: day) else { continue }
+            for slot in 0..<perDay {
+                let minute = slot * slotMinutes + Int.random(in: edgeMinutes...(slotMinutes - edgeMinutes), using: &generator)
+                if let time = calendar.date(byAdding: .minute, value: minute, to: windowStart), time > now { result.append(time) }
+            }
+        }
+        return result
+    }
+}
+
 public enum DemoError: LocalizedError {
     case denied, missing, invalid(String), unavailable
     public var errorDescription: String? {
@@ -135,6 +184,7 @@ private struct DemoState: Codable {
     var records: [DemoRecord]
     var checkIn: String?
     var activities: [ActivityEntry]?
+    var feelings: [FeelingCheck]?
 
     static let clinicalGrants: [RecordKind: Grant] = [
         .symptoms: Grant(read: true, add: false, edit: false, delete: false),
@@ -174,6 +224,7 @@ private struct DemoState: Codable {
         guard Set(records.map(\.id)).count == records.count else { throw DemoError.invalid("Saved entries have duplicate identifiers.") }
         for record in records { try Self.validate(record) }
         for activity in activities ?? [] { try activity.validate() }
+        for feeling in feelings ?? [] { try feeling.validate() }
     }
 
     static func validate(_ record: DemoRecord) throws {
@@ -356,6 +407,19 @@ public struct ClinicianSummary: Equatable {
         var next = state
         next.activities?.removeAll { $0.id == id }
         try commit(next)
+    }
+    public func feelingChecks(_ role: DemoRole) throws -> [FeelingCheck] {
+        guard role == .survivor else { throw DemoError.denied }
+        return (state.feelings ?? []).sorted { $0.recordedAt > $1.recordedAt }
+    }
+    @discardableResult public func saveFeeling(_ role: DemoRole, rating: Double) throws -> FeelingCheck {
+        guard role == .survivor else { throw DemoError.denied }
+        let check = FeelingCheck(rating: rating, recordedAt: now())
+        try check.validate()
+        var next = state
+        next.feelings = (next.feelings ?? []) + [check]
+        try commit(next)
+        return check
     }
     public func record(_ role: DemoRole, _ kind: RecordKind, _ id: UUID) throws -> DemoRecord {
         try require(role, kind, .read)

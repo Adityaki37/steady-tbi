@@ -251,6 +251,7 @@ struct AccountView: View {
                         .id(userID)
                 }
             }
+            NavigationLink("Feeling check-ins") { FeelingCheckInsView() }
         }
     }
     private var accountSection: some View {

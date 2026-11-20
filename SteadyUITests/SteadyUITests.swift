@@ -217,6 +217,30 @@ final class SteadyUITests: XCTestCase {
         shot("12-clinician-summary-pdf")
     }
 
+    func testTappedFeelingReminderOpensRatingAndSavesHalfStep() {
+        // Simulates tapping a reminder: the app opens on the rating screen.
+        app.launchArguments += ["-STEADY_UITEST_FEELING"]
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Feeling check-in"].waitForExistence(timeout: 20), "Rating screen did not open")
+        let slider = app.sliders["feelingSlider"]
+        XCTAssertEqual(slider.value as? String, "3 of 5")
+        app.buttons["Raise by half"].tap()
+        XCTAssertEqual(slider.value as? String, "3.5 of 5")
+        shot("13-feeling-rating")
+        app.buttons["saveFeeling"].tap()
+        XCTAssertTrue(app.navigationBars["Feeling check-in"].waitForNonExistence(timeout: 10))
+        let settings = app.buttons["openDemoSettings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 10))
+        settings.tap()
+        chooseDemoRole("Survivor")
+        let open = app.buttons["openFeelingCheckIns"]
+        scrollUntilHittable(open)
+        open.tap()
+        XCTAssertTrue(element(containing: "3.5 of 5").waitForExistence(timeout: 10), "Saved answer missing")
+        XCTAssertTrue(app.switches["feelingRemindersToggle"].exists)
+        shot("14-feeling-check-ins")
+    }
+
     func testControlTabTogglesCaregiverPermission() {
         launch()
         openTab("Control")

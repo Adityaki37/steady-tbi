@@ -26,6 +26,15 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         // Calm foreground presentation; the same banner style used by the local demo.
         completionHandler([.banner, .sound])
     }
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        // Tapping a feeling reminder opens the app straight to the 1-5 rating screen.
+        if response.notification.request.identifier.hasPrefix(FeelingReminders.identifierPrefix),
+           response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+            Task { @MainActor in FeelingPrompt.shared.isShowing = true }
+        }
+        completionHandler()
+    }
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
@@ -44,6 +53,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
 @main struct SteadyApp: App {
     @StateObject private var store = AppStore()
+    @Environment(\.scenePhase) private var scenePhase
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     private let notificationDelegate = NotificationDelegate()
     init() { UNUserNotificationCenter.current().delegate = notificationDelegate }
@@ -51,6 +61,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         WindowGroup {
             ContentView().environmentObject(store).tint(Color.accentColor)
                 .alert(item: $store.notice) { notice in Alert(title: Text(notice.title), message: Text(notice.message), dismissButton: .default(Text("OK"))) }
+                .onChange(of: scenePhase, initial: true) { _, phase in
+                    if phase == .active { Task { await FeelingReminders.shared.refresh() } }
+                }
         }
     }
 }

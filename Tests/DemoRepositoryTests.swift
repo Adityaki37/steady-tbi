@@ -178,6 +178,54 @@ final class DemoRepositoryTests: XCTestCase {
         XCTAssertFalse(try repository.clinicianSummary(.survivor, period: .all).isEmpty)
     }
 
+    @MainActor func testFeelingChecksAreSurvivorOnlyHalfStepsAndPersist() async throws {
+        let memory = MemoryPersistence()
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        var clock = start
+        let repository = try DemoRepository(persistence: memory, now: { clock })
+        XCTAssertEqual(FeelingCheck.allowedRatings, [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5])
+        for role in [DemoRole.caregiver, .clinician, .physician] {
+            XCTAssertThrowsError(try repository.saveFeeling(role, rating: 3))
+            XCTAssertThrowsError(try repository.feelingChecks(role))
+        }
+        for bad in [0.5, 1.25, 5.5, 3.3] { XCTAssertThrowsError(try repository.saveFeeling(.survivor, rating: bad)) }
+        try repository.saveFeeling(.survivor, rating: 1.5)
+        clock = start.addingTimeInterval(3600)
+        try repository.saveFeeling(.survivor, rating: 4.5)
+        let reopened = try DemoRepository(persistence: memory)
+        XCTAssertEqual(try reopened.feelingChecks(.survivor).map(\.rating), [4.5, 1.5], "Newest first")
+        XCTAssertEqual(FeelingCheck.format(4.5), "4.5")
+        XCTAssertEqual(FeelingCheck.format(2), "2")
+        try reopened.reset(.survivor)
+        XCTAssertTrue(try reopened.feelingChecks(.survivor).isEmpty)
+    }
+
+    func testFeelingScheduleIsThreeRandomTimesPerDayInWakingHours() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let morning = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 6)))
+        var generator = SystemRandomNumberGenerator()
+        for _ in 0..<50 {
+            let times = FeelingSchedule.times(days: 7, from: morning, calendar: calendar, using: &generator)
+            XCTAssertEqual(times.count, 21)
+            XCTAssertEqual(times, times.sorted())
+            let byDay = Dictionary(grouping: times) { calendar.startOfDay(for: $0) }
+            XCTAssertEqual(byDay.count, 7)
+            XCTAssertTrue(byDay.values.allSatisfy { $0.count == 3 })
+            for time in times {
+                let hour = calendar.component(.hour, from: time)
+                XCTAssertTrue((9..<21).contains(hour), "Outside 9 AM-9 PM: \(time)")
+            }
+            for (a, b) in zip(times, times.dropFirst()) {
+                XCTAssertGreaterThanOrEqual(b.timeIntervalSince(a), 60 * 60, "Reminders closer than an hour")
+            }
+        }
+        let evening = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 22)))
+        let later = FeelingSchedule.times(days: 2, from: evening, calendar: calendar, using: &generator)
+        XCTAssertEqual(later.count, 3, "Today's times have passed, so only tomorrow is scheduled")
+        XCTAssertTrue(later.allSatisfy { $0 > evening })
+    }
+
     @MainActor func testCheckInRoleRestrictions() async throws {
         let repository = try DemoRepository(persistence: MemoryPersistence())
         XCTAssertThrowsError(try repository.requestCheckIn(.survivor))

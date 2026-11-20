@@ -29,6 +29,7 @@ extension Section where Parent == SectionHeader, Content: View, Footer == EmptyV
 
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
+    @ObservedObject private var feelingPrompt = FeelingPrompt.shared
     @State private var previewingDemo = false
     @State private var demoTab: DemoTab = .settings
 
@@ -56,8 +57,16 @@ struct ContentView: View {
                     demoSettings.tabItem { Label("Demo settings", systemImage: "gearshape") }.tag(DemoTab.settings)
                 }
                 .id(store.role)
+                .sheet(isPresented: feelingSheet(inDemo: true)) { FeelingRatingView() }
             }
         }
+        .sheet(isPresented: feelingSheet(inDemo: false)) { FeelingRatingView() }
+    }
+
+    /// A tapped reminder shows the rating screen on top of whichever screen is visible.
+    private func feelingSheet(inDemo: Bool) -> Binding<Bool> {
+        Binding(get: { feelingPrompt.isShowing && previewingDemo == inDemo },
+                set: { if !$0 { feelingPrompt.isShowing = false } })
     }
 
     private var demoSettings: some View {
@@ -133,6 +142,13 @@ struct HomeView: View {
                 }
                 if store.role == .survivor {
                     Card {
+                        Label("How are you feeling?", systemImage: "face.smiling").font(.headline)
+                        Text("Get 3 gentle reminders a day to rate how you feel, from 1 (extremely overwhelmed) to 5 (perfectly fine).")
+                        NavigationLink { FeelingCheckInsView() } label: {
+                            Text("Feeling check-ins").frame(maxWidth: .infinity)
+                        }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("openFeelingCheckIns")
+                    }
+                    Card {
                         Label("For your next visit", systemImage: "doc.text").font(.headline)
                         Text("Make a short summary of your symptoms, activities and notes. Save it as a PDF or share it with your clinician.")
                         NavigationLink { ClinicianReportView() } label: {
@@ -189,6 +205,107 @@ struct HomeView: View {
         case .clinician: return "Add a clinician note"
         case .physician: return "Add a physician note"
         }
+    }
+}
+
+/// "How are you feeling?" 1 (extremely overwhelmed) to 5 (perfectly fine), in steps of 0.5.
+struct FeelingRatingView: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var rating = 3.0
+    @State private var errorMessage: String?
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 28) {
+                    Text("How are you feeling right now?")
+                        .font(.title.bold()).multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(FeelingCheck.format(rating))
+                        .font(.system(size: 72, weight: .bold, design: .rounded))
+                        .contentTransition(.numericText())
+                        .accessibilityHidden(true)
+                    HStack(spacing: 16) {
+                        stepButton("minus", label: "Lower by half", change: -FeelingCheck.step)
+                        Slider(value: $rating, in: FeelingCheck.lowest...FeelingCheck.highest, step: FeelingCheck.step)
+                            .accessibilityLabel("Feeling, 1 extremely overwhelmed to 5 perfectly fine")
+                            .accessibilityValue("\(FeelingCheck.format(rating)) of 5")
+                            .accessibilityIdentifier("feelingSlider")
+                        stepButton("plus", label: "Raise by half", change: FeelingCheck.step)
+                    }
+                    HStack(alignment: .top) {
+                        Text("1\n\(FeelingCheck.lowestLabel)").multilineTextAlignment(.leading)
+                        Spacer(minLength: 16)
+                        Text("5\n\(FeelingCheck.highestLabel)").multilineTextAlignment(.trailing)
+                    }.font(.subheadline).foregroundStyle(Palette.secondaryText).accessibilityHidden(true)
+                    Button("Save") {
+                        do { try store.saveFeeling(rating); dismiss() }
+                        catch DemoError.denied { errorMessage = "Only the survivor can answer. Switch to Survivor in Demo settings." }
+                        catch { errorMessage = error.localizedDescription }
+                    }.buttonStyle(PrimaryButtonStyle()).frame(maxWidth: .infinity).accessibilityIdentifier("saveFeeling")
+                    if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
+                    Text("Your answer stays on this iPhone. It is a personal rating, not a medical score.")
+                        .font(.footnote).foregroundStyle(Palette.secondaryText).multilineTextAlignment(.center)
+                }.padding(24)
+            }
+            .background(Palette.background)
+            .navigationTitle("Feeling check-in").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Not now") { dismiss() } } }
+        }
+    }
+    private func stepButton(_ symbol: String, label: String, change: Double) -> some View {
+        Button {
+            withAnimation { rating = min(max(rating + change, FeelingCheck.lowest), FeelingCheck.highest) }
+        } label: {
+            Image(systemName: symbol).font(.title3.weight(.semibold)).frame(width: 44, height: 44)
+        }
+        .buttonStyle(.bordered).buttonBorderShape(.circle)
+        .accessibilityLabel(label)
+    }
+}
+
+/// Survivor settings for the random reminders, plus recent answers.
+struct FeelingCheckInsView: View {
+    @EnvironmentObject private var store: AppStore
+    @ObservedObject private var reminders = FeelingReminders.shared
+    @State private var rating = false
+    @State private var working = false
+    private var recent: [FeelingCheck] { Array(((try? store.feelingChecks()) ?? []).prefix(10)) }
+    var body: some View {
+        List {
+            Section {
+                Toggle("Remind me 3 times a day", isOn: Binding(get: { reminders.isEnabled }, set: { value in
+                    working = true
+                    Task {
+                        let ok = await reminders.setEnabled(value)
+                        working = false
+                        if !ok { store.show("Notifications are off", "Allow notifications for Steady in iPhone Settings, then try again.") }
+                    }
+                })).disabled(working).accessibilityIdentifier("feelingRemindersToggle")
+                Text("Steady picks 3 random times each day between 9 AM and 9 PM. Tap a reminder to rate how you feel.")
+                    .font(.footnote).foregroundStyle(Palette.secondaryText)
+                if reminders.isEnabled, let next = reminders.nextReminder {
+                    LabeledContent("Next reminder", value: next.formatted(date: .abbreviated, time: .shortened))
+                }
+            }
+            Section {
+                Button("Rate how I feel now") { rating = true }.accessibilityIdentifier("rateFeelingNow")
+            }
+            Section(secondary: "Recent answers") {
+                if recent.isEmpty {
+                    Text("No answers yet.").foregroundStyle(Palette.secondaryText)
+                } else {
+                    ForEach(recent) { check in
+                        LabeledContent(check.recordedAt.formatted(date: .abbreviated, time: .shortened),
+                                       value: "\(FeelingCheck.format(check.rating)) of 5")
+                    }
+                }
+            }
+        }
+        .navigationTitle("Feeling check-ins")
+        .task { await reminders.refresh() }
+        .sheet(isPresented: $rating) { FeelingRatingView() }
     }
 }
 

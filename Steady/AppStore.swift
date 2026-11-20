@@ -110,6 +110,8 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
         try ClinicianReportPDF.render(summary).write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
         return url
     }
+    func feelingChecks() throws -> [FeelingCheck] { try repo().feelingChecks(role) }
+    func saveFeeling(_ rating: Double) throws { try repo().saveFeeling(role, rating: rating); revision += 1 }
     func checkIn() -> String? { try? repo().checkIn(role) }
     func dismissCheckIn() throws { try repo().dismissCheckIn(role); revision += 1 }
     func requestCheckIn(withNotification: Bool, symptomBreak: Bool = false) async {
@@ -151,4 +153,79 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
     }
     func show(_ title: String, _ message: String) { notice = AppNotice(title: title, message: message) }
     func report(_ error: Error) { show("Could not complete action", error.localizedDescription) }
+}
+
+/// Set when the survivor taps a feeling reminder; the root view then shows the rating screen.
+@MainActor final class FeelingPrompt: ObservableObject {
+    static let shared = FeelingPrompt()
+    @Published var isShowing = false
+    private init() {
+        #if DEBUG
+        // UI tests open the rating screen as if a reminder had been tapped.
+        if ProcessInfo.processInfo.arguments.contains("-STEADY_UITEST_FEELING") { isShowing = true }
+        #endif
+    }
+}
+
+/// Three local reminders a day at random times between 9 AM and 9 PM, on this iPhone only.
+/// iOS allows 64 pending local notifications, so a rolling week (21) is scheduled and topped up on open.
+@MainActor final class FeelingReminders: ObservableObject {
+    static let shared = FeelingReminders()
+    nonisolated static let identifierPrefix = "steady-feeling-"
+    static let days = 7
+    private static let enabledKey = "steady.feelingReminders.enabled"
+    @Published private(set) var isEnabled = UserDefaults.standard.bool(forKey: enabledKey)
+    @Published private(set) var nextReminder: Date?
+    private init() {}
+
+    /// Returns false when the survivor has notifications turned off for Steady.
+    func setEnabled(_ enabled: Bool) async -> Bool {
+        if enabled {
+            let allowed = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
+            guard allowed else { store(false); await clearPending(); return false }
+        }
+        store(enabled)
+        if enabled { await reschedule() } else { await clearPending() }
+        return true
+    }
+
+    /// Keeps about a week of reminders queued: picks a new week once less than six days remain.
+    func refresh() async {
+        guard isEnabled else { await clearPending(); return }
+        let center = UNUserNotificationCenter.current()
+        let pending = await center.pendingNotificationRequests().filter { $0.identifier.hasPrefix(Self.identifierPrefix) }
+        let queued = pending.compactMap { ($0.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() }
+        if queued.count >= Self.days * 3 - 3 { nextReminder = queued.min(); return }
+        await reschedule()
+    }
+
+    private func reschedule() async {
+        await clearPending()
+        var generator = SystemRandomNumberGenerator()
+        let times = FeelingSchedule.times(days: Self.days, from: Date(), using: &generator)
+        let center = UNUserNotificationCenter.current()
+        for time in times {
+            let content = UNMutableNotificationContent()
+            content.title = "How are you feeling?"
+            content.body = "Tap to rate how you feel right now, from 1 to 5."
+            content.sound = .default
+            let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: time)
+            let request = UNNotificationRequest(identifier: Self.identifierPrefix + UUID().uuidString, content: content,
+                                                trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false))
+            try? await center.add(request)
+        }
+        nextReminder = times.min()
+    }
+
+    private func clearPending() async {
+        let center = UNUserNotificationCenter.current()
+        let ids = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.identifierPrefix) }
+        center.removePendingNotificationRequests(withIdentifiers: ids)
+        nextReminder = nil
+    }
+
+    private func store(_ enabled: Bool) {
+        isEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
+    }
 }
