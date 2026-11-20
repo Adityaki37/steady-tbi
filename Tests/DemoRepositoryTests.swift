@@ -141,6 +141,43 @@ final class DemoRepositoryTests: XCTestCase {
         XCTAssertEqual(try DemoRepository(persistence: memory).records(.survivor, .symptoms).count, 2)
     }
 
+    @MainActor func testClinicianSummaryIsSurvivorOnlyAndFiltersByPeriod() async throws {
+        let seedDay = Date(timeIntervalSince1970: 1793113200)
+        var clock = seedDay.addingTimeInterval(20 * 86_400)
+        let repository = try DemoRepository(persistence: MemoryPersistence(), now: { clock })
+        for role in [DemoRole.caregiver, .clinician, .physician] {
+            XCTAssertThrowsError(try repository.clinicianSummary(role, period: .all))
+        }
+        try repository.add(.survivor, .symptoms, title: "Fictional headache", body: "After reading.", severity: 5)
+        try repository.saveActivity(.survivor, ActivityEntry(activity: "Grocery trip", startedAt: clock.addingTimeInterval(-3600),
+                                                             durationMinutes: 90, fatigue: 4, symptoms: "Dizzy"), editing: false)
+
+        let week = try repository.clinicianSummary(.survivor, period: .week)
+        XCTAssertEqual(week.symptoms.map(\.title), ["Fictional headache"], "Seeded entries are older than 7 days")
+        XCTAssertEqual(week.activities.count, 1)
+        XCTAssertEqual(week.highestIntensity, 5)
+        XCTAssertEqual(week.totalActivityMinutes, 90)
+        XCTAssertEqual(week.mostTiringActivities.map(\.activity), ["Grocery trip"])
+        XCTAssertTrue(week.observations.isEmpty && week.notes.isEmpty && week.files.isEmpty)
+
+        let month = try repository.clinicianSummary(.survivor, period: .month)
+        XCTAssertEqual(month.symptoms.count, 3)
+        XCTAssertEqual(try XCTUnwrap(month.averageIntensity), 10.0 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(month.observations.count, 1)
+        XCTAssertEqual(month.notes.count, 1)
+        XCTAssertEqual(month.files.count, 1)
+        let text = month.sections.flatMap { [$0.title] + $0.lines }.joined(separator: "\n")
+        XCTAssertTrue(text.contains("not a diagnosis"))
+        XCTAssertTrue(text.contains("Sample-brain-MRI.png"))
+        XCTAssertTrue(text.contains("symptoms: Dizzy"))
+
+        clock = seedDay.addingTimeInterval(400 * 86_400)
+        let later = try repository.clinicianSummary(.survivor, period: .quarter)
+        XCTAssertTrue(later.isEmpty)
+        XCTAssertTrue(later.sections.contains { $0.lines == ["None in this period."] })
+        XCTAssertFalse(try repository.clinicianSummary(.survivor, period: .all).isEmpty)
+    }
+
     @MainActor func testCheckInRoleRestrictions() async throws {
         let repository = try DemoRepository(persistence: MemoryPersistence())
         XCTAssertThrowsError(try repository.requestCheckIn(.survivor))

@@ -2,6 +2,7 @@ import SwiftUI
 import SteadyCore
 import UniformTypeIdentifiers
 import PDFKit
+import CoreText
 
 enum Palette {
     static let background = Color(uiColor: .systemGroupedBackground)
@@ -130,6 +131,15 @@ struct HomeView: View {
                         }
                     }
                 }
+                if store.role == .survivor {
+                    Card {
+                        Label("For your next visit", systemImage: "doc.text").font(.headline)
+                        Text("Make a short summary of your symptoms, activities and notes. Save it as a PDF or share it with your clinician.")
+                        NavigationLink { ClinicianReportView() } label: {
+                            Text("Clinician summary").frame(maxWidth: .infinity)
+                        }.buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("openClinicianSummary")
+                    }
+                }
                 if store.role == .survivor, let message = store.checkIn() {
                     Card {
                         Label("A gentle check-in", systemImage: "bell").font(.headline)
@@ -178,6 +188,124 @@ struct HomeView: View {
         case .caregiver: return "Add an observation"
         case .clinician: return "Add a clinician note"
         case .physician: return "Add a physician note"
+        }
+    }
+}
+
+struct ClinicianReportView: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var period: ReportPeriod = .month
+    @State private var summary: ClinicianSummary?
+    @State private var pdfURL: URL?
+    @State private var preview: FilePreview?
+    @State private var errorMessage: String?
+    var body: some View {
+        List {
+            Section {
+                Text("Pick a time period. Steady builds a PDF you can save to Files, print, or send to your clinician.")
+                Picker("Time period", selection: $period) {
+                    ForEach(ReportPeriod.allCases) { Text($0.title).tag($0) }
+                }.accessibilityIdentifier("reportPeriod")
+            }
+            if let summary {
+                Section(secondary: "At a glance") {
+                    ForEach(summary.glance, id: \.self) { Text($0) }
+                }
+                Section(secondary: "Included") {
+                    LabeledContent("Symptoms", value: "\(summary.symptoms.count)")
+                    LabeledContent("Activities", value: "\(summary.activities.count)")
+                    LabeledContent("Caregiver observations", value: "\(summary.observations.count)")
+                    LabeledContent("Clinician notes", value: "\(summary.notes.count)")
+                    LabeledContent("Files (names only)", value: "\(summary.files.count)")
+                }
+                if summary.isEmpty {
+                    Section { Text("Nothing was logged in this period. Try a longer one.").foregroundStyle(Palette.secondaryText) }
+                }
+                Section {
+                    if let pdfURL {
+                        ShareLink(item: pdfURL) {
+                            Label("Save or share PDF", systemImage: "square.and.arrow.up")
+                        }.accessibilityIdentifier("shareClinicianSummary")
+                        Button { preview = FilePreview(url: pdfURL) } label: {
+                            Label("Preview PDF", systemImage: "doc.text.magnifyingglass")
+                        }.accessibilityIdentifier("previewClinicianSummary")
+                    }
+                } footer: {
+                    Text("The report stays on this iPhone until you save or share it. It is self-reported and is not a diagnosis.")
+                        .foregroundStyle(Palette.secondaryText)
+                }
+            }
+            if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red) } }
+        }
+        .navigationTitle("Clinician summary").navigationBarTitleDisplayMode(.inline)
+        .task(id: period) { build() }
+        .sheet(item: $preview) { item in FilePreviewView(url: item.url, title: "Clinician summary") { preview = nil } }
+    }
+
+    private func build() {
+        do {
+            let next = try store.clinicianSummary(period)
+            summary = next
+            pdfURL = try store.clinicianReportPDF(next)
+            errorMessage = nil
+        } catch {
+            pdfURL = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+/// Draws a ClinicianSummary as a paginated US Letter PDF.
+enum ClinicianReportPDF {
+    static func render(_ summary: ClinicianSummary) -> Data {
+        let text = NSMutableAttributedString()
+        func add(_ string: String, _ font: UIFont, spacingAfter: CGFloat, color: UIColor = .black) {
+            let style = NSMutableParagraphStyle()
+            style.paragraphSpacing = spacingAfter
+            style.lineBreakMode = .byWordWrapping
+            text.append(NSAttributedString(string: string + "\n", attributes: [
+                .font: font, .paragraphStyle: style, .foregroundColor: color
+            ]))
+        }
+        add("Steady · Clinician summary", .systemFont(ofSize: 22, weight: .bold), spacingAfter: 4)
+        add(summary.coverage, .systemFont(ofSize: 12), spacingAfter: 16, color: .darkGray)
+        for section in summary.sections {
+            add(section.title, .systemFont(ofSize: 15, weight: .semibold), spacingAfter: 6)
+            for (index, line) in section.lines.enumerated() {
+                let last = index == section.lines.count - 1
+                add(section.title == "About this report" ? line : "•  " + line, .systemFont(ofSize: 11),
+                    spacingAfter: last ? 16 : 4)
+            }
+        }
+
+        let page = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = [kCGPDFContextTitle as String: "Steady clinician summary",
+                               kCGPDFContextCreator as String: "Steady"]
+        let framesetter = CTFramesetterCreateWithAttributedString(text as CFAttributedString)
+        return UIGraphicsPDFRenderer(bounds: page, format: format).pdfData { context in
+            var location = 0
+            var pageNumber = 1
+            repeat {
+                context.beginPage()
+                let cg = context.cgContext
+                cg.saveGState()
+                cg.textMatrix = .identity
+                cg.translateBy(x: 0, y: page.height)
+                cg.scaleBy(x: 1, y: -1)
+                let path = CGPath(rect: CGRect(x: 54, y: 72, width: page.width - 108, height: page.height - 126), transform: nil)
+                let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: location, length: 0), path, nil)
+                CTFrameDraw(frame, cg)
+                let visible = CTFrameGetVisibleStringRange(frame)
+                cg.restoreGState()
+                let footer = "Self-reported · not a diagnosis · page \(pageNumber)"
+                (footer as NSString).draw(at: CGPoint(x: 54, y: page.height - 44), withAttributes: [
+                    .font: UIFont.systemFont(ofSize: 9), .foregroundColor: UIColor.darkGray
+                ])
+                guard visible.length > 0 else { break }
+                location += visible.length
+                pageNumber += 1
+            } while location < text.length
         }
     }
 }

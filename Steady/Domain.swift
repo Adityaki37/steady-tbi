@@ -194,6 +194,103 @@ private struct DemoState: Codable {
     }
 }
 
+public enum ReportPeriod: String, CaseIterable, Identifiable, Hashable {
+    case week, month, quarter, all
+    public var id: String { rawValue }
+    public var title: String {
+        switch self { case .week: return "Last 7 days"; case .month: return "Last 30 days"; case .quarter: return "Last 90 days"; case .all: return "All time" }
+    }
+    public var days: Int? {
+        switch self { case .week: return 7; case .month: return 30; case .quarter: return 90; case .all: return nil }
+    }
+}
+
+public struct ReportSection: Equatable, Hashable {
+    public let title: String
+    public let lines: [String]
+}
+
+/// A survivor-prepared summary to bring to a clinical visit. Self-reported, not a diagnosis.
+public struct ClinicianSummary: Equatable {
+    public let generatedAt: Date
+    public let period: ReportPeriod
+    public let startDate: Date?
+    public let symptoms: [DemoRecord]
+    public let activities: [ActivityEntry]
+    public let observations: [DemoRecord]
+    public let notes: [DemoRecord]
+    public let files: [DemoRecord]
+
+    public var averageIntensity: Double? {
+        let values = symptoms.compactMap(\.severity)
+        return values.isEmpty ? nil : Double(values.reduce(0, +)) / Double(values.count)
+    }
+    public var highestIntensity: Int? { symptoms.compactMap(\.severity).max() }
+    public var totalActivityMinutes: Int { activities.reduce(0) { $0 + $1.durationMinutes } }
+    public var averageFatigue: Double? {
+        activities.isEmpty ? nil : Double(activities.reduce(0) { $0 + $1.fatigue }) / Double(activities.count)
+    }
+    /// Activities with the highest fatigue (3 or more of 5), most tiring first.
+    public var mostTiringActivities: [ActivityEntry] {
+        Array(activities.filter { $0.fatigue >= 3 }.sorted { ($0.fatigue, $0.startedAt) > ($1.fatigue, $1.startedAt) }.prefix(3))
+    }
+    public var isEmpty: Bool { symptoms.isEmpty && activities.isEmpty && observations.isEmpty && notes.isEmpty && files.isEmpty }
+
+    private static func day(_ date: Date) -> String { date.formatted(date: .abbreviated, time: .omitted) }
+    private static func one(_ value: Double) -> String { String(format: "%.1f", value) }
+    private static func duration(_ minutes: Int) -> String {
+        minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
+    }
+    private static func entry(_ record: DemoRecord) -> String {
+        let body = record.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(day(record.createdAt)) · \(record.title)" + (body.isEmpty ? "" : ": \(body)")
+    }
+
+    public var coverage: String {
+        guard let startDate else { return "All entries up to \(Self.day(generatedAt))" }
+        return "\(Self.day(startDate)) to \(Self.day(generatedAt)) (\(period.title.lowercased()))"
+    }
+
+    public var glance: [String] {
+        var lines = ["\(symptoms.count) symptom \(symptoms.count == 1 ? "entry" : "entries")"]
+        if let average = averageIntensity, let highest = highestIntensity {
+            lines.append("Average intensity \(Self.one(average)) of 5 · highest \(highest) of 5")
+        }
+        lines.append("\(activities.count) \(activities.count == 1 ? "activity" : "activities") logged" +
+                     (activities.isEmpty ? "" : " · \(Self.duration(totalActivityMinutes)) total"))
+        if let fatigue = averageFatigue { lines.append("Average fatigue after activities \(Self.one(fatigue)) of 5") }
+        lines.append("\(observations.count) caregiver \(observations.count == 1 ? "observation" : "observations") · \(notes.count) clinician \(notes.count == 1 ? "note" : "notes")")
+        return lines
+    }
+
+    public var sections: [ReportSection] {
+        func orNone(_ lines: [String]) -> [String] { lines.isEmpty ? ["None in this period."] : lines }
+        return [
+            ReportSection(title: "About this report", lines: [
+                "Prepared by the survivor in Steady on \(Self.day(generatedAt)).",
+                "Covers \(coverage).",
+                "Everything here is self-reported or shared by the survivor's circle. Intensity and fatigue are personal 1–5 and 0–5 ratings, not medical scores. This report is not a diagnosis."
+            ]),
+            ReportSection(title: "At a glance", lines: glance),
+            ReportSection(title: "Most tiring activities", lines: orNone(mostTiringActivities.map {
+                "\($0.activity) · fatigue \($0.fatigue) of 5 · \(Self.duration($0.durationMinutes))"
+            })),
+            ReportSection(title: "Symptoms", lines: orNone(symptoms.map { record in
+                Self.entry(record) + (record.severity.map { " (intensity \($0) of 5)" } ?? "")
+            })),
+            ReportSection(title: "Activities", lines: orNone(activities.map {
+                "\(Self.day($0.startedAt)) · \($0.activity) · \(Self.duration($0.durationMinutes)) · fatigue \($0.fatigue) of 5" +
+                ($0.symptoms.isEmpty ? "" : " · symptoms: \($0.symptoms)")
+            })),
+            ReportSection(title: "Caregiver observations", lines: orNone(observations.map(Self.entry))),
+            ReportSection(title: "Clinician notes", lines: orNone(notes.map(Self.entry))),
+            ReportSection(title: "Files on record", lines: orNone(files.map {
+                "\(Self.day($0.createdAt)) · \($0.attachment?.displayName ?? $0.title)"
+            }))
+        ]
+    }
+}
+
 // All reads and mutations enter here. UI hiding is not the permission boundary.
 // This role parameter is a demo identity, not authenticated production identity.
 @MainActor public final class DemoRepository {
@@ -302,6 +399,21 @@ private struct DemoState: Codable {
     }
     public func dismissCheckIn(_ role: DemoRole) throws {
         guard role == .survivor else { throw DemoError.denied }; var next = state; next.checkIn = nil; try commit(next)
+    }
+    /// Only the survivor builds their own summary; sharing it is their choice outside the app.
+    public func clinicianSummary(_ role: DemoRole, period: ReportPeriod) throws -> ClinicianSummary {
+        guard role == .survivor else { throw DemoError.denied }
+        let generated = now()
+        let start = period.days.map { generated.addingTimeInterval(-Double($0) * 86_400) }
+        func inPeriod(_ date: Date) -> Bool { start.map { date >= $0 } ?? true }
+        func list(_ kind: RecordKind) -> [DemoRecord] {
+            state.records.filter { $0.kind == kind && inPeriod($0.createdAt) }.sorted { $0.createdAt > $1.createdAt }
+        }
+        return ClinicianSummary(
+            generatedAt: generated, period: period, startDate: start,
+            symptoms: list(.symptoms),
+            activities: (state.activities ?? []).filter { inPeriod($0.startedAt) }.sorted { $0.startedAt > $1.startedAt },
+            observations: list(.observations), notes: list(.notes), files: list(.attachments))
     }
     public func reset(_ role: DemoRole) throws { guard role == .survivor else { throw DemoError.denied }; try commit(.seed()) }
     public static func explicitlyResetSavedData(_ persistence: DemoPersistence, actor: DemoRole) throws {
