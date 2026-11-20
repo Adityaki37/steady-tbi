@@ -16,6 +16,8 @@ The old repository used a different timestamp for the initial schema and separat
 
 `migration-baseline.json` records the hashes of the applied migrations. `python3 scripts/check_backend.py` rejects changes to those files. Add a new migration for every subsequent change; do not edit an applied migration, replay the initial schema, or use `--include-all` to work around a history mismatch. `backend/schema.sql` is only the original schema reference.
 
+After later deployments, extend the baseline using the versions and SQL hashes verified against the hosted migration history. Preserve the existing entries.
+
 If you previously ran the older migration filenames on a disposable local database, preserve any local data you need, then recreate **only that local test database** using the reconciled files. Do not reset the hosted project. A separately deployed project with an old history needs its own reviewed reconciliation before deployment.
 
 ## Development and testing
@@ -63,8 +65,8 @@ App changes still require a new Xcode build and distribution to testers. Databas
 ## Current boundaries
 
 - Auth, private storage, and the nine public tables are present; all public tables have RLS enabled.
-- The signup-quota table is intentionally private with no client policies. Do not add a permissive policy just to remove its informational advisor notice.
-- Leaked-password protection is disabled on this demo. Enabling that feature requires checking plan availability; this setup did not change billing or plans.
+- The signup-quota table is intentionally private with no client policies. Do not add a permissive policy just to remove its [informational advisor notice](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+- Leaked-password protection is disabled on this Free-plan demo. Supabase makes [leaked-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) available on Pro and above; this setup did not change billing or plans.
 - APNs credentials and live remote push remain separate work. Foreground check-ins continue to use polling.
 
 References: [Supabase access control](https://supabase.com/docs/guides/platform/access-control), [migration workflow](https://supabase.com/docs/guides/deployment/managing-environments), [API keys](https://supabase.com/docs/guides/getting-started/api-keys).
