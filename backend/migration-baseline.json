@@ -25,6 +25,10 @@
     {
       "file": "20261120034921_index_invitation_recipient.sql",
       "sha256": "48f2ff0a3b16681dbf87e9e815b5cca0f16350e9d6baa8c5c3ab80a38120a200"
+    },
+    {
+      "file": "20261120010000_care_team_invite_codes.sql",
+      "sha256": "41d5cdb69a776c465bd534aa886bc9bec64c51395a6d8fef421e3a8340285bf0"
     }
   ]
 }
