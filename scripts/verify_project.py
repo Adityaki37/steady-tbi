@@ -57,7 +57,8 @@ require('user_metadata' not in sql.replace('-- never user_metadata or a client-s
 require("false,15728640,array" in sql, 'Private storage bucket has a 15 MB limit')
 initial=list(migration_dir.glob('*_steady_initial.sql'))
 require(len(initial)==1 and initial[0].read_bytes()==(ROOT/'backend/schema.sql').read_bytes(), 'Initial migration matches the reference schema exactly')
-require((ROOT/'Tests/DemoRepositoryTests.swift').read_text().count('func test')==8,'Eight core Swift tests supplied (not executed here)')
+test_count = len(re.findall(r'\bfunc test\w+\s*\(', (ROOT/'Tests/DemoRepositoryTests.swift').read_text()))
+require(test_count >= 8, f'{test_count} core Swift tests supplied (not executed here)')
 digest=hashlib.sha256(sql.encode()).hexdigest()
 result={'status':'PASS','checks':len(checks),'details':checks,'schemaSHA256':digest,'scope':'Structural source/project/asset checks only. Not Swift compilation, XCTest execution, or device validation.'}
 (ROOT/'Validation').mkdir(exist_ok=True)

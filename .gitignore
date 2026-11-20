@@ -12,6 +12,7 @@ node_modules/
 Config/Local.xcconfig
 Config/Backend.plist
 Steady/SteadyResources/Backend.local.plist
+Steady/DemoResources/Backend.local.plist
 supabase/.temp/
 supabase/.branches/
 *.xcresult

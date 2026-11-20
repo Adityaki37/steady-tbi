@@ -2,7 +2,7 @@ name: iOS build and tests
 
 on:
   push:
-    branches: [feat/push-notifications-and-clinician-upload]
+    branches: [main, feat/push-notifications-and-clinician-upload]
   pull_request:
   workflow_dispatch:
 
