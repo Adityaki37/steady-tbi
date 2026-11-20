@@ -29,6 +29,10 @@
     {
       "file": "20261120010000_care_team_invite_codes.sql",
       "sha256": "41d5cdb69a776c465bd534aa886bc9bec64c51395a6d8fef421e3a8340285bf0"
+    },
+    {
+      "file": "20261120044500_fix_set_member_details.sql",
+      "sha256": "3934f68362872eef2b3cf7adb82be8221150ba6ed2b7fa9fb4586712740244d0"
     }
   ]
 }
