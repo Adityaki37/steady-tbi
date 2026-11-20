@@ -15,7 +15,9 @@ if [ "${SUPABASE_PROJECT_ID:-$project_ref}" != "$project_ref" ]; then
   exit 1
 fi
 : "${SUPABASE_ACCESS_TOKEN:?Set your own Supabase access token in the environment.}"
-: "${SUPABASE_DB_PASSWORD:?Set the Steady Demo database password in the environment.}"
+# The CLI obtains a temporary database login using the scoped access token.
+# A master database password is neither required nor stored in GitHub.
+unset SUPABASE_DB_PASSWORD
 python3 scripts/check_backend.py
 
 # Stay on the tested v2 CLI; v3 changes remote targeting and confirmation flags.

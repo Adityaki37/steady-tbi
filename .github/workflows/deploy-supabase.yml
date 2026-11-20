@@ -24,7 +24,6 @@ jobs:
     environment: steady-demo
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       APPLY: ${{ inputs.apply }}
     steps:
       - uses: actions/checkout@v4
@@ -44,3 +43,11 @@ jobs:
           else
             sh scripts/deploy-backend.sh plan
           fi
+      - name: Verify hosted API
+        run: |
+          python3 - <<'PY'
+          import os, plistlib, subprocess
+          from pathlib import Path
+          config = plistlib.loads(Path('Steady/SteadyResources/Backend.demo.plist').read_bytes())
+          subprocess.run(['node', 'test-tools/hosted-health.mjs'], env={**os.environ, **config}, check=True)
+          PY

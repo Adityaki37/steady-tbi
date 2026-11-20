@@ -42,7 +42,7 @@ Use the pinned CLI `npx --yes supabase@2.122.0`; the deployment script also pins
 
 ## Deploy the shared backend
 
-The owner or an authorized developer sets **their own** `SUPABASE_ACCESS_TOKEN` and the project's `SUPABASE_DB_PASSWORD` in their shell or secret manager. Do not paste either into source files, chat, or command-line arguments.
+The owner or an authorized developer sets **their own** `SUPABASE_ACCESS_TOKEN` in their shell or secret manager. The pinned CLI obtains a temporary database login from that token; no master database password is needed. Do not paste the token into source files, chat, or command-line arguments.
 
 ```sh
 sh scripts/deploy-backend.sh plan
@@ -55,10 +55,9 @@ For read-only hosted HTTP checks, set the public `SUPABASE_URL` and `SUPABASE_PU
 
 For GitHub-based deployment, create an Actions environment named `steady-demo` and add these environment secrets:
 
-- `SUPABASE_ACCESS_TOKEN`: an authorized account's token scoped to this project and the database/function operations required by the CLI.
-- `SUPABASE_DB_PASSWORD`: this project's database password.
+- `SUPABASE_ACCESS_TOKEN`: a token scoped only to Steady Demo, with Database and Edge Functions read-write, and Project Settings and Connection Pooling read access. The configured deployment token does not expire, as requested by the project owner. Revoke or replace it in Supabase and update the GitHub secret when access needs to change.
 
-After this branch is merged, open **Actions → Deploy shared Supabase backend → Run workflow** on `main`. Leave **apply** unchecked for a preview; check it to deploy. The workflow runs backend tests first and serializes deploys. GitHub pushes alone do not change the live database. GitHub deployment is not activated until those secrets are supplied; no credentials were copied out of the connected Supabase session.
+After this branch is merged, open **Actions → Deploy shared Supabase backend → Run workflow** on `main`. Leave **apply** unchecked for a preview; check it to deploy. The workflow runs backend tests first and serializes deploys. GitHub pushes alone do not change the live database. The `steady-demo` environment should permit deployments only from `main`. GitHub deployment requires the environment secret above; Supabase app users and the app's publishable key cannot deploy schema changes.
 
 App changes still require a new Xcode build and distribution to testers. Database deployment does not replace an installed app binary.
 
