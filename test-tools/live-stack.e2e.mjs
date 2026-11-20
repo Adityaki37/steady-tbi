@@ -283,6 +283,67 @@ await check('shared roles cannot read invitations, members of others or owner co
   ok(all); assert.equal(all.json.length, 2);
 });
 
+// ---------------------------------------------------------------- care-team invite codes
+// A wrong, used or expired code answers 200 with null so the failed guess is recorded.
+const noMatch = (r, label) => { ok(r, label); assert.equal(r.json, null, `${label} expected null`); };
+await check('care-team codes: survivor adds a physician by code, with name and kind of doctor', async () => {
+  for (const [name, role] of [['physician', 'physician'], ['helper', 'caregiver'], ['guesser', 'clinician']]) {
+    await signUp(name, role); await confirmEmail(name); await signIn(name);
+  }
+  const codeShape = /^[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/;
+  rejected(await rpc('create_invite_code', T('caregiver'), { c: circle, r: 'caregiver', name: 'X', details: '' }), 'non-owner creates code');
+  rejected(await rpc('create_invite_code', T('survivor'), { c: circle, r: 'survivor', name: 'X', details: '' }), 'invalid role');
+  rejected(await rpc('create_invite_code', T('survivor'), { c: circle, r: 'caregiver', name: '  ', details: '' }), 'blank name');
+  rejected(await rpc('create_invite_code', T('survivor'), { c: circle, r: 'caregiver', name: 'X', details: 'x'.repeat(81) }), 'detail too long');
+
+  const doctor = await rpc('create_invite_code', T('survivor'), { c: circle, r: 'physician', name: 'Dr. Fictional Lee', details: 'Neurologist' });
+  ok(doctor, 'physician code'); assert.match(doctor.json, codeShape);
+  const helper = await rpc('create_invite_code', T('survivor'), { c: circle, r: 'caregiver', name: 'Fictional Sam', details: 'Sibling' });
+  ok(helper, 'caregiver code'); assert.match(helper.json, codeShape);
+
+  const list = await api(`rest/v1/circle_invitations?select=role,recipient_email,recipient_name,recipient_details,is_code,expires_at&circle_id=eq.${circle}&is_code=eq.true`, { token: T('survivor') });
+  ok(list, 'survivor lists codes');
+  const row = list.json.find((i) => i.recipient_name === 'Dr. Fictional Lee');
+  assert.deepEqual([row.role, row.recipient_email, row.recipient_details, row.is_code], ['physician', null, 'Neurologist', true]);
+  const days = (new Date(row.expires_at) - Date.now()) / 86_400_000;
+  assert.ok(days > 2.9 && days <= 3.01, `expires in about 3 days, got ${days}`);
+  emptyRows(await api(`rest/v1/circle_invitations?circle_id=eq.${circle}&is_code=eq.true`, { token: T('physician') }), 'others cannot list codes');
+
+  rejected(await rpc('accept_invite', T('physician'), { token: doctor.json.replace('-', '') }), 'email path refuses a code');
+  rejected(await rpc('accept_invite_code', T('helper'), { code: doctor.json }), 'caregiver account with physician code');
+  noMatch(await rpc('accept_invite_code', T('survivor'), { code: doctor.json }), 'survivor joins own circle');
+  const joined = await rpc('accept_invite_code', T('physician'), { code: ' ' + doctor.json.toLowerCase().replace('-', ' ') });
+  ok(joined, 'physician joins with lower-case spaced code'); assert.equal(joined.json, circle);
+  noMatch(await rpc('accept_invite_code', T('physician'), { code: doctor.json }), 'replay');
+  const role = await rpc('my_role', T('physician'), { c: circle });
+  ok(role); assert.equal(role.json, 'physician');
+  const member = await api(`rest/v1/circle_members?select=role,display_name,details&circle_id=eq.${circle}&user_id=eq.${people.physician.id}`, { token: T('survivor') });
+  ok(member); assert.deepEqual(member.json, [{ role: 'physician', display_name: 'Dr. Fictional Lee', details: 'Neurologist' }]);
+
+  rejected(await rpc('set_member_details', T('physician'), { c: circle, member: people.physician.id, name: 'Me', details: '' }), 'member edits details');
+  ok(await rpc('set_member_details', T('survivor'), { c: circle, member: people.physician.id, name: 'Dr. Fictional Lee', details: 'Physiatrist (rehab doctor)' }), 'survivor edits details');
+
+  const listed = await api(`rest/v1/circle_invitations?select=id,recipient_name&circle_id=eq.${circle}&is_code=eq.true&accepted_at=is.null`, { token: T('survivor') });
+  ok(listed);
+  ok(await rpc('revoke_invite', T('survivor'), { i: listed.json.find((i) => i.recipient_name === 'Fictional Sam').id }), 'revoke code');
+  noMatch(await rpc('accept_invite_code', T('helper'), { code: helper.json }), 'revoked code');
+
+  const del = await api(`rest/v1/circle_members?circle_id=eq.${circle}&user_id=eq.${people.physician.id}`, { method: 'DELETE', token: T('survivor'), representation: true });
+  ok(del, 'cleanup physician'); assert.equal(del.json.length, 1);
+});
+await check('care-team codes: 10 wrong guesses an hour lock the account out of codes', async () => {
+  const real = await rpc('create_invite_code', T('survivor'), { c: circle, r: 'clinician', name: 'Fictional Pat', details: 'Neuropsychologist' });
+  ok(real);
+  for (let i = 0; i < 10; i++) noMatch(await rpc('accept_invite_code', T('guesser'), { code: 'ZZZZZZZ' + i }), `wrong guess ${i}`);
+  const blocked = await rpc('accept_invite_code', T('guesser'), { code: real.json });
+  rejected(blocked, 'real code after 10 misses');
+  assert.match(JSON.stringify(blocked.json), /Too many tries/);
+  emptyRows(await api(`rest/v1/circle_members?circle_id=eq.${circle}&user_id=eq.${people.guesser.id}`, { token: T('survivor') }), 'guesser did not join');
+  const listed = await api(`rest/v1/circle_invitations?select=id&circle_id=eq.${circle}&is_code=eq.true&accepted_at=is.null&revoked_at=is.null`, { token: T('survivor') });
+  ok(listed);
+  for (const { id } of listed.json) ok(await rpc('revoke_invite', T('survivor'), { i: id }), 'cleanup code');
+});
+
 await check('activity logs round-trip and remain private even when the survivor profile is shared', async () => {
   const activity = {
     id: randomUUID(), user_id: people.survivor.id, activity: 'Fictional grocery trip',

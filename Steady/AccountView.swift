@@ -22,6 +22,13 @@ struct AccountView: View {
     @State private var inviteRole: DemoRole = .caregiver
     @State private var invitationToken = ""
     @State private var acceptToken = ""
+    @State private var codeRole: DemoRole = .caregiver
+    @State private var codeName = ""
+    @State private var codeDetail = ""
+    @State private var codeDetailOther = ""
+    @State private var createdCode = ""
+    @State private var createdCodeFor = ""
+    @State private var createdCodeRole: DemoRole = .caregiver
     @State private var joiningAnotherCircle = false
     @State private var profileEditor: ProfileEditor?
     @State private var setupErrorFor: UUID?
@@ -49,6 +56,7 @@ struct AccountView: View {
                         if client.circles.isEmpty, accountRole != .survivor { joinSection }
                         if client.circleID != nil {
                             if accountRole == .survivor, client.role == "survivor" {
+                                careTeamSection
                                 Section(secondary: "Sharing") {
                                     NavigationLink("Manage sharing") { sharingView }
                                 }
@@ -126,7 +134,7 @@ struct AccountView: View {
                 }
                 .onChange(of: client.can(.attachments, .read)) { _, allowed in if !allowed { preview = nil } }
                 .onChange(of: client.circleID) { _, _ in
-                    editing = nil; editor = false; preview = nil; invitationToken = ""; inviteEmail = ""
+                    editing = nil; editor = false; preview = nil; invitationToken = ""; inviteEmail = ""; createdCode = ""
                 }
                 .onChange(of: accountRole, initial: true) { _, role in
                     kind = role?.initialJournalKind ?? .symptoms
@@ -136,7 +144,7 @@ struct AccountView: View {
         .id(client.session?.user.id)
         .onChange(of: client.session?.user.id) { _, userID in
             editing = nil; editor = false; preview = nil; deleting = nil; importing = false
-            joiningAnotherCircle = false; acceptToken = ""; inviteEmail = ""; invitationToken = ""
+            joiningAnotherCircle = false; acceptToken = ""; inviteEmail = ""; invitationToken = ""; createdCode = ""
             inviteRole = .caregiver
             profileRole = nil
             if profileEditor?.id != userID { profileEditor = nil }
@@ -287,15 +295,17 @@ struct AccountView: View {
     }
     private var joinSection: some View {
         Section(secondary: "Join a survivor’s circle") {
-            Text(hostedDemo ? "Use the code the survivor shares with you. Sign in with the demo username they invited."
-                 : "Use the invitation code the survivor shares with you. Sign in with the email address they invited.")
+            Text("Enter the code your survivor gave you, like K7QF-29MD. It adds them as a person in your care.")
                 .font(.footnote).foregroundStyle(Palette.secondaryText)
-            TextField("Invitation code", text: $acceptToken, axis: .vertical)
-                .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
+            TextField("Code", text: $acceptToken, axis: .vertical)
+                .textInputAutocapitalization(.characters).autocorrectionDisabled().privacySensitive()
+                .accessibilityIdentifier("joinCode")
             Button("Join circle") {
                 Task {
                     await perform {
-                        try await client.accept(acceptToken.trimmingCharacters(in: .whitespacesAndNewlines))
+                        let code = acceptToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if InviteCode.isShortCode(code) { try await client.acceptInviteCode(code) }
+                        else { try await client.accept(code) } // older long email-invitation codes
                         acceptToken = ""
                         joiningAnotherCircle = false
                     }
@@ -374,8 +384,70 @@ struct AccountView: View {
             }
         }
     }
+    private var careTeamSection: some View {
+        Section {
+            Picker("They are my", selection: $codeRole) {
+                ForEach(DemoRole.allCases.filter { $0 != .survivor }) { Text($0.title).tag($0) }
+            }.accessibilityIdentifier("careTeamRole")
+            TextField(codeRole == .caregiver ? "Their name" : "Their name, e.g. Dr. Lee", text: $codeName)
+                .textInputAutocapitalization(.words).accessibilityIdentifier("careTeamName")
+            Picker(CareTeamDetail.label(for: codeRole), selection: $codeDetail) {
+                Text("Choose one").tag("")
+                ForEach(CareTeamDetail.options(for: codeRole), id: \.self) { Text($0).tag($0) }
+            }.accessibilityIdentifier("careTeamDetail")
+            if codeDetail == CareTeamDetail.other {
+                TextField(codeRole == .caregiver ? "Relationship" : "Kind of doctor", text: $codeDetailOther)
+                    .accessibilityIdentifier("careTeamDetailOther")
+            }
+            Button("Create code") {
+                Task {
+                    await perform {
+                        createdCode = try await client.createInviteCode(role: codeRole.rawValue, name: codeName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                                         details: careTeamDetailText)
+                        createdCodeFor = "\(codeName.trimmingCharacters(in: .whitespacesAndNewlines)) · \(careTeamDetailText.isEmpty ? codeRole.title : careTeamDetailText)"
+                        createdCodeRole = codeRole
+                        codeName = ""; codeDetail = ""; codeDetailOther = ""
+                        try await client.refresh()
+                    }
+                }
+            }.disabled(busy || codeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || careTeamDetailText.count > 80)
+                .accessibilityIdentifier("createCareTeamCode")
+            if !createdCode.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Code for \(createdCodeFor)").font(.subheadline)
+                    Text(createdCode).font(.system(.largeTitle, design: .monospaced).weight(.bold))
+                        .textSelection(.enabled).privacySensitive().accessibilityIdentifier("careTeamCode")
+                    Text("They sign in as a \(createdCodeRole.title.lowercased()), tap Join a circle, and enter this code. It works once and ends in 3 days.")
+                        .font(.footnote).foregroundStyle(Palette.secondaryText)
+                    ShareLink("Share code", item: "Join my Steady care team with this code: \(createdCode)")
+                }.padding(.vertical, 4)
+            }
+            ForEach(client.invitations.filter { $0.is_code == true && $0.revoked_at == nil && $0.accepted_at == nil }) { invitation in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(invitation.recipient_name ?? "Someone") · \(invitation.recipient_details ?? invitation.role.capitalized)").font(.subheadline)
+                    Text("Waiting to join as \(invitation.role) · ends \(Self.shortDate(invitation.expires_at))").font(.caption).foregroundStyle(Palette.secondaryText)
+                    Button("Cancel code", role: .destructive) { Task { await perform { try await client.revoke(invitation.id) } } }.disabled(busy)
+                }
+            }
+        } header: {
+            Text("Add to your care team")
+        } footer: {
+            Text("Anyone with the code can use it, so share it only with that person. You can remove anyone later under People with access.")
+        }
+        .onChange(of: codeRole) { _, _ in codeDetail = ""; codeDetailOther = "" }
+    }
+    private var careTeamDetailText: String {
+        (codeDetail == CareTeamDetail.other ? codeDetailOther : codeDetail).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    /// Server timestamps are ISO 8601; show just the day.
+    static func shortDate(_ iso: String) -> String {
+        let parser = ISO8601DateFormatter(); parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        guard let date = parser.date(from: iso) ?? plain.date(from: iso) else { return iso }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
     private var invitationsSection: some View {
-        Section(secondary: "Invite someone to your circle") {
+        Section(secondary: "Invite by email instead") {
             TextField(hostedDemo ? "Recipient’s demo username" : "Recipient account email", text: $inviteEmail)
                 .keyboardType(hostedDemo ? .asciiCapable : .emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
             Picker("Role in your circle", selection: $inviteRole) {
@@ -402,9 +474,9 @@ struct AccountView: View {
                 Text(invitationToken).font(.caption.monospaced()).textSelection(.enabled).privacySensitive()
                 ShareLink("Share invitation code", item: invitationToken)
             }
-            ForEach(client.invitations.filter { $0.revoked_at == nil && $0.accepted_at == nil }) { invitation in
+            ForEach(client.invitations.filter { $0.is_code != true && $0.revoked_at == nil && $0.accepted_at == nil }) { invitation in
                 VStack(alignment: .leading) {
-                    Text("\(accountLabel(invitation.recipient_email)) · \(invitation.role)").font(.subheadline)
+                    Text("\(accountLabel(invitation.recipient_email ?? "")) · \(invitation.role)").font(.subheadline)
                     Text("Expires: \(invitation.expires_at)").font(.caption)
                     Button("Revoke invitation", role: .destructive) { Task { await perform { try await client.revoke(invitation.id) } } }.disabled(busy)
                 }
@@ -415,18 +487,19 @@ struct AccountView: View {
         Section {
             if client.members.isEmpty { Text("No one has joined your circle yet.").foregroundStyle(Palette.secondaryText) }
             ForEach(client.members) { member in
-                let address = client.invitations.first {
-                    $0.recipient_user_id == member.user_id && $0.accepted_at != nil
-                }?.recipient_email ?? member.user_id.uuidString
+                let email = client.invitations.first {
+                    $0.recipient_user_id == member.user_id && $0.accepted_at != nil && $0.recipient_email != nil
+                }?.recipient_email
+                let address = member.display_name ?? email.map(accountLabel) ?? member.user_id.uuidString
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(member.role.capitalized)
-                    Text(accountLabel(address)).font(.subheadline)
+                    Text(member.details.map { "\(member.role.capitalized) · \($0)" } ?? member.role.capitalized)
+                    Text(address).font(.subheadline)
                     if let sharing = member.shares_survivor_profile {
                         Toggle("Share injury details and ranked symptoms", isOn: Binding(get: { sharing }, set: { enabled in
                             Task { await perform { try await client.setProfileSharing(for: member.id, enabled: enabled) } }
                         }))
                         .disabled(busy)
-                        .accessibilityHint("Applies to \(accountLabel(address))")
+                        .accessibilityHint("Applies to \(address)")
                     }
                     Button("Remove access", role: .destructive) { Task { await perform { try await client.removeMember(member.user_id) } } }.disabled(busy)
                 }
@@ -467,6 +540,23 @@ struct AccountView: View {
     private func registerPushTokenIfPossible() async {
         guard client.session != nil, let token = push.deviceToken else { return }
         do { try await client.registerDeviceToken(token) } catch { }
+    }
+}
+
+/// Choices for "Relationship" (caregivers) and "Kind of doctor" (clinicians and physicians).
+enum CareTeamDetail {
+    static let other = "Other"
+    static func label(for role: DemoRole) -> String { role == .caregiver ? "Relationship" : "Kind of doctor" }
+    static func options(for role: DemoRole) -> [String] {
+        switch role {
+        case .caregiver:
+            return ["Spouse or partner", "Parent", "Child", "Sibling", "Other relative", "Friend", "Paid caregiver", other]
+        case .clinician, .physician:
+            return ["Neurologist", "Primary care doctor", "Physiatrist (rehab doctor)", "Neuropsychologist", "Psychiatrist",
+                    "Neurosurgeon", "Physical therapist", "Occupational therapist", "Speech therapist", "Nurse", other]
+        case .survivor:
+            return []
+        }
     }
 }
 

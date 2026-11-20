@@ -191,4 +191,28 @@ final class CloudClientTests: XCTestCase {
         client.clearVisibleData()
         XCTAssertNil(client.sharedSurvivorProfile)
     }
+
+    func testCareTeamCodesAreRecognisedAndOldAndNewRowsDecode() throws {
+        XCTAssertTrue(InviteCode.isShortCode("K7QF-29MD"))
+        XCTAssertTrue(InviteCode.isShortCode(" k7qf 29md "))
+        XCTAssertEqual(InviteCode.normalized("k7qf-29 md"), "K7QF29MD")
+        XCTAssertFalse(InviteCode.isShortCode("K7QF-29M0"), "0 is not in the alphabet")
+        XCTAssertFalse(InviteCode.isShortCode("K7QF-29M"), "too short")
+        XCTAssertFalse(InviteCode.isShortCode(UUID().uuidString + UUID().uuidString), "old long codes use the email path")
+
+        let oldInvite = Data(#"{"id":"\#(UUID())","recipient_email":"a@example.com","recipient_user_id":null,"role":"caregiver","expires_at":"2026-11-27T00:00:00Z","accepted_at":null,"revoked_at":null}"#.utf8)
+        let decodedOld = try JSONDecoder().decode(CloudInvitation.self, from: oldInvite)
+        XCTAssertEqual(decodedOld.recipient_email, "a@example.com"); XCTAssertNil(decodedOld.is_code)
+        let codeInvite = Data(#"{"id":"\#(UUID())","recipient_email":null,"recipient_user_id":null,"role":"physician","expires_at":"2026-11-23T00:00:00Z","accepted_at":null,"revoked_at":null,"recipient_name":"Dr. Lee","recipient_details":"Neurologist","is_code":true}"#.utf8)
+        let decodedCode = try JSONDecoder().decode(CloudInvitation.self, from: codeInvite)
+        XCTAssertNil(decodedCode.recipient_email); XCTAssertEqual(decodedCode.recipient_details, "Neurologist"); XCTAssertEqual(decodedCode.is_code, true)
+
+        let oldMember = try JSONDecoder().decode(CloudMember.self, from: Data(#"{"user_id":"\#(UUID())","role":"caregiver","shares_survivor_profile":false}"#.utf8))
+        XCTAssertNil(oldMember.display_name)
+        let newMember = try JSONDecoder().decode(CloudMember.self, from: Data(#"{"user_id":"\#(UUID())","role":"caregiver","shares_survivor_profile":false,"display_name":"Sam","details":"Sibling"}"#.utf8))
+        XCTAssertEqual(newMember.display_name, "Sam"); XCTAssertEqual(newMember.details, "Sibling")
+        XCTAssertEqual(CareTeamDetail.label(for: .physician), "Kind of doctor")
+        XCTAssertEqual(CareTeamDetail.label(for: .caregiver), "Relationship")
+        XCTAssertTrue(CareTeamDetail.options(for: .caregiver).contains(CareTeamDetail.other))
+    }
 }
