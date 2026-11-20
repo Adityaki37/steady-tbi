@@ -46,8 +46,8 @@
     "No user-editable metadata authorization",
     "Private storage bucket has a 15 MB limit",
     "Initial migration matches the reference schema exactly",
-    "Eight core Swift tests supplied (not executed here)"
+    "11 core Swift tests supplied (not executed here)"
   ],
-  "schemaSHA256": "b7fcc6e3d04c77c4cd3af92940b583ee778c3074c66b340437c0e0d3fa87c13b",
+  "schemaSHA256": "6b4032267303ade37bb9dc1f01d5aff8425c2715ebf0070c6ee14189de6cadc9",
   "scope": "Structural source/project/asset checks only. Not Swift compilation, XCTest execution, or device validation."
 }

@@ -1,0 +1,30 @@
+{
+  "project_ref": "sipqoeqvwkaljqifddxd",
+  "source": "Supabase migration history; reconciled 2026-11-19",
+  "migrations": [
+    {
+      "file": "20261113041845_steady_initial.sql",
+      "sha256": "7f08c5f3e30c6f15973cd169c6dbacff339f7daf4825ad33aeba3058722917ff"
+    },
+    {
+      "file": "20261113041854_survivor_profiles_sharing_and_activity_logs.sql",
+      "sha256": "f3d87389e16ce341e446706212b43496481eb2b38677649139753e71790e86bd"
+    },
+    {
+      "file": "20261113042118_demo_signup_quota.sql",
+      "sha256": "408be3ced95ed845c0c0b67d5a6dfdbdf179395abc93051a03a778d99012321b"
+    },
+    {
+      "file": "20261113042224_demo_identity_validate_at_commit.sql",
+      "sha256": "53827db31638614a30ae46f474cc23c30bfa7e0cfad005cf1498bd50bb221e26"
+    },
+    {
+      "file": "20261116212701_physician_role.sql",
+      "sha256": "153fca9a2e516b2076963d98fe5a77556812d1e02280411cb118b1014dc05c8d"
+    },
+    {
+      "file": "20261120034921_index_invitation_recipient.sql",
+      "sha256": "48f2ff0a3b16681dbf87e9e815b5cca0f16350e9d6baa8c5c3ab80a38120a200"
+    }
+  ]
+}

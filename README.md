@@ -22,6 +22,8 @@ sh scripts/run-on-mac.sh
 
 The download includes the hosted demo connection for account signup and sharing. [Account and sharing walkthrough](#create-an-account-and-share-a-circle)
 
+Developers: see [shared backend setup and deployment](backend/TEAM_SETUP.md) before changing Supabase. App builds and database migrations are separate; the repository now matches the hosted project's applied migration history.
+
 ### Run on your own iPhone
 
 1. Connect and unlock your iPhone, trust the Mac if prompted, and sign in under **Xcode → Settings → Accounts** with your Apple Account.
@@ -68,7 +70,7 @@ Supported attachments: PNG/JPEG/PDF, up to 15 MB. Imported files are copied into
 
 ### What CI verifies, and what it does not
 
-Two GitHub Actions workflows configure these checks. See [validation results](Validation/README.md) for the local Mac and Supabase runs.
+The iOS and local Supabase GitHub Actions workflows run on pull requests and pushes to main. A separate manual workflow deploys the shared backend. See [team setup](backend/TEAM_SETUP.md) and [validation results](Validation/README.md).
 
 | Area | Configured in CI | Not verified |
 | --- | --- | --- |

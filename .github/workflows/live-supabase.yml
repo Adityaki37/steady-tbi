@@ -2,7 +2,7 @@ name: Live local Supabase e2e
 
 on:
   push:
-    branches: [feat/push-notifications-and-clinician-upload]
+    branches: [main, feat/push-notifications-and-clinician-upload]
   pull_request:
   workflow_dispatch:
 
@@ -18,6 +18,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Verify migration baseline and database policies
+        run: |
+          python3 scripts/check_backend.py
+          npm ci --prefix test-tools --ignore-scripts
+          node test-tools/backend.test.mjs
       - name: Start local Supabase stack
         run: |
           npx --yes supabase@2.122.0 start -x studio,imgproxy,vector,logflare,edge-runtime,realtime,postgres-meta

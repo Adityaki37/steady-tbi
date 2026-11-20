@@ -1,0 +1,47 @@
+{
+  "checkedOn": "2026-11-19 America/New_York",
+  "projectRef": "sipqoeqvwkaljqifddxd",
+  "projectStatus": "ACTIVE_HEALTHY",
+  "appliedMigrations": 6,
+  "migrationHistory": "Local versions and normalized SQL SHA-256 hashes match the hosted migration history.",
+  "hostedChange": "Added circle_invitations_recipient_user_id_idx; verified its definition after applying the migration.",
+  "backendPolicyTests": {
+    "engine": "PGlite 0.5.13",
+    "assertions": 1662,
+    "permissionCombinations": 192,
+    "status": "PASS"
+  },
+  "hostedHTTP": {
+    "authSettings": 200,
+    "unsignedJournalRead": 401,
+    "unsignedSignupQuota": 401,
+    "invalidDemoSignup": 400,
+    "status": "PASS",
+    "createsAccounts": false
+  },
+  "deploymentScriptChecks": [
+    "Preview has no deployment calls",
+    "Wrong project is rejected",
+    "Failed preview prevents deployment",
+    "Apply targets only Steady Demo and demo-signup"
+  ],
+  "healthAdvisors": "No findings",
+  "remainingAdvisors": [
+    "Private signup quota has no client RLS policies by design",
+    "Leaked password protection disabled",
+    "New invitation index not yet used"
+  ],
+  "limits": [
+    "GitHub deployment requires environment secrets",
+    "No full signed-in device test was performed in this setup",
+    "No APNs setup or real patient-data certification"
+  ],
+  "nativeValidation": {
+    "swiftTests": 11,
+    "swiftTestFailures": 0,
+    "unsignedSimulatorBuild": "PASS",
+    "location": "Clean temporary checkout; original Desktop build blocked on macOS file coordination",
+    "bundledBackend": "https://sipqoeqvwkaljqifddxd.supabase.co",
+    "localOverrideInBuiltApp": false
+  }
+}

@@ -6,6 +6,7 @@ if [ "$(uname -s)" != Darwin ]; then
   exit 1
 fi
 xcodebuild -version
+python3 scripts/check_backend.py
 swift test
 python3 scripts/verify_project.py
 xcodebuild -project Steady.xcodeproj -scheme Steady -sdk iphonesimulator \
