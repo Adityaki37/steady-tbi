@@ -198,6 +198,25 @@ final class SteadyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Preview the sample MRI illustration or import a PDF, PNG or JPEG up to 15 MB."].waitForExistence(timeout: 10))
     }
 
+    func testSurvivorOpensClinicianSummaryAndPreviewsPDF() {
+        launch()
+        let open = app.buttons["openClinicianSummary"]
+        scrollUntilHittable(open)
+        shot("10-today-clinician-summary-card")
+        open.tap()
+        XCTAssertTrue(app.navigationBars["Clinician summary"].waitForExistence(timeout: 10), "Summary screen did not open")
+        XCTAssertTrue(element(containing: "symptom entries").waitForExistence(timeout: 10), "At-a-glance counts missing")
+        let share = app.buttons["shareClinicianSummary"]
+        scrollUntilHittable(share)
+        XCTAssertTrue(share.exists, "Save or share PDF button missing")
+        shot("11-clinician-summary")
+        let preview = app.buttons["previewClinicianSummary"]
+        scrollUntilHittable(preview)
+        preview.tap()
+        XCTAssertTrue(app.otherElements["filePreviewPDF"].waitForExistence(timeout: 15), "PDF preview did not render")
+        shot("12-clinician-summary-pdf")
+    }
+
     func testControlTabTogglesCaregiverPermission() {
         launch()
         openTab("Control")

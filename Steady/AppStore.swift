@@ -99,6 +99,17 @@ struct FilePreview: Identifiable { let id = UUID(); let url: URL }
         guard FileManager.default.fileExists(atPath: url.path) else { throw DemoError.invalid("The local file is missing. Import it again.") }
         return url
     }
+    func clinicianSummary(_ period: ReportPeriod) throws -> ClinicianSummary { try repo().clinicianSummary(role, period: period) }
+    /// Writes the summary PDF to a private temporary folder, replacing any earlier copy.
+    func clinicianReportPDF(_ summary: ClinicianSummary) throws -> URL {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ClinicianReport", isDirectory: true)
+        try? FileManager.default.removeItem(at: folder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let stamp = summary.generatedAt.formatted(.iso8601.year().month().day())
+        let url = folder.appendingPathComponent("Steady-clinician-summary-\(stamp).pdf")
+        try ClinicianReportPDF.render(summary).write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
+        return url
+    }
     func checkIn() -> String? { try? repo().checkIn(role) }
     func dismissCheckIn() throws { try repo().dismissCheckIn(role); revision += 1 }
     func requestCheckIn(withNotification: Bool, symptomBreak: Bool = false) async {
