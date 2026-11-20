@@ -78,11 +78,31 @@ struct CloudMember: Decodable, Identifiable {
     let user_id: UUID
     let role: String
     let shares_survivor_profile: Bool?
+    // Set when the person joined with a care-team code: e.g. "Dr. Lee" and "Neurologist".
+    var display_name: String? = nil
+    var details: String? = nil
     var id: UUID { user_id }
 }
 struct CloudInvitation: Codable, Identifiable {
-    let id: UUID; let recipient_email: String; let recipient_user_id: UUID?
+    // Code invitations have no email; they carry the name and detail the survivor typed.
+    let id: UUID; let recipient_email: String?; let recipient_user_id: UUID?
     let role: String; let expires_at: String; let accepted_at: String?; let revoked_at: String?
+    var recipient_name: String? = nil
+    var recipient_details: String? = nil
+    var is_code: Bool? = nil
+}
+
+/// Care-team invite codes look like "K7QF-29MD": 8 symbols with no 0/O or 1/I/L look-alikes.
+enum InviteCode {
+    static let alphabet = Set("23456789ABCDEFGHJKMNPQRSTUVWXYZ")
+    static func normalized(_ text: String) -> String {
+        text.uppercased().filter { !$0.isWhitespace && $0 != "-" }
+    }
+    /// True for a short care-team code; anything else is treated as an older long email-invitation code.
+    static func isShortCode(_ text: String) -> Bool {
+        let code = normalized(text)
+        return code.count == 8 && code.allSatisfy(alphabet.contains)
+    }
 }
 struct RoleGrant: Codable, Identifiable {
     let role: String; let kind: String; var can_read: Bool; var can_add: Bool; var can_edit: Bool; var can_delete: Bool
@@ -217,6 +237,10 @@ private enum SessionKeychain {
             if path == "rest/v1/rpc/invite_member", config.isHostedDemo,
                (details?["message"] as? String)?.contains("demo_invites_require_existing_account") == true {
                 throw DemoError.invalid("That demo username was not found. Ask the recipient to sign up, then check their username.")
+            }
+            if ["create_invite_code", "accept_invite_code", "set_member_details"].contains(where: { path.hasSuffix("rpc/" + $0) }),
+               (details?["code"] as? String) == "PGRST202" {
+                throw DemoError.invalid("Care-team codes need a server update. Apply the latest Supabase migration, then try again.")
             }
             throw DemoError.invalid((details?["message"] as? String) ?? (details?["msg"] as? String) ?? (details?["error_description"] as? String) ?? "The backend request failed. Refresh access or sign in again.")
         }
@@ -428,7 +452,14 @@ private enum SessionKeychain {
             if assigned == "survivor" {
                 let grantData = try await request("rest/v1/circle_permissions?circle_id=eq.\(id.uuidString)&order=role,kind")
                 let memberData = try await request("rest/v1/circle_members?circle_id=eq.\(id.uuidString)")
-                let inviteData = try await request("rest/v1/circle_invitations?select=id,recipient_email,recipient_user_id,role,expires_at,accepted_at,revoked_at&circle_id=eq.\(id.uuidString)&order=accepted_at.desc.nullslast")
+                let baseColumns = "id,recipient_email,recipient_user_id,role,expires_at,accepted_at,revoked_at"
+                let inviteQuery = "&circle_id=eq.\(id.uuidString)&order=accepted_at.desc.nullslast"
+                // Ask for the care-team columns; a server without that migration yet gets the old query.
+                let inviteData: Data
+                do {
+                    inviteData = try await request("rest/v1/circle_invitations?select=\(baseColumns),recipient_name,recipient_details,is_code" + inviteQuery)
+                } catch is CancellationError { throw CancellationError() }
+                catch { inviteData = try await request("rest/v1/circle_invitations?select=\(baseColumns)" + inviteQuery) }
                 guard expected == generation, circleID == id else { return }
                 grants = try JSONDecoder().decode([RoleGrant].self, from: grantData)
                 members = try JSONDecoder().decode([CloudMember].self, from: memberData)
@@ -446,6 +477,25 @@ private enum SessionKeychain {
         let address = config?.isHostedDemo == true ? try DemoAccount.email(for: email) : email
         let data = try await rpc("invite_member", ["c": id.uuidString, "email": address, "r": role])
         return try JSONDecoder().decode(String.self, from: data)
+    }
+    /// Returns a short code such as "K7QF-29MD" for a caregiver, clinician or physician.
+    func createInviteCode(role: String, name: String, details: String) async throws -> String {
+        guard let id = circleID else { throw DemoError.missing }
+        let data = try await rpc("create_invite_code", ["c": id.uuidString, "r": role, "name": name, "details": details])
+        return try JSONDecoder().decode(String.self, from: data)
+    }
+    func acceptInviteCode(_ code: String) async throws {
+        let data = try await rpc("accept_invite_code", ["code": InviteCode.normalized(code)])
+        // The server answers null (not an error) for a wrong, used or expired code, so the guess is counted.
+        guard let circle = try JSONDecoder().decode(UUID?.self, from: data) else {
+            throw DemoError.invalid("That code is wrong, used or expired. Check it with your survivor.")
+        }
+        try await loadCircles(selecting: circle)
+    }
+    func setMemberDetails(_ member: UUID, name: String, details: String) async throws {
+        guard let circle = circleID else { throw DemoError.missing }
+        _ = try await rpc("set_member_details", ["c": circle.uuidString, "member": member.uuidString, "name": name, "details": details])
+        try await refresh()
     }
     func accept(_ token: String) async throws {
         let data = try await rpc("accept_invite", ["token": token])
